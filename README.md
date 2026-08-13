@@ -26,7 +26,7 @@ example-mod/     worked example: one item, one Lua hook, both verified
    between builds.
 6. Before using any Lua function or event not already noted in
    `docs/lua-events-reference.md` or `docs/lua-api-wiki.md`, verify it against
-   those docs or https://demiurgequantified.github.io/ProjectZomboidLuaDocs/ —
+   those docs or <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> —
    do not rely on memory of older PZ versions, B42 changed a lot mid-cycle.
 
 ## Local testing

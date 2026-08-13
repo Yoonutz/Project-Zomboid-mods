@@ -6,7 +6,7 @@
 - Before using any Lua function, event, or item/script property not already
   cited in `docs/`, verify it against `docs/pz-modding-guide/`,
   `docs/lua-api-wiki.md`, `docs/lua-events-reference.md`, or
-  https://demiurgequantified.github.io/ProjectZomboidLuaDocs/ (the real
+  <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> (the real
   current API reference — the PZwiki `LuaDocs` page itself is stale, see
   `docs/luadocs-wiki-note.md`). Add newly-verified facts to `docs/` as they're
   confirmed rather than re-deriving them each time.
@@ -16,3 +16,6 @@
 - No in-game testing happens automatically in this environment. Any change to
   a `.txt` script or `.lua` file is a syntax-level claim only until it's been
   loaded in PZ and checked against `~/Zomboid/Logs/` for parse errors.
+- Before committing a change to any `.md` file this repo authored (root files,
+  `docs/*.md` — not the vendored `docs/pz-modding-guide/` snapshot), run
+  `npx prettier --check "*.md" "docs/*.md"` and fix anything it flags.

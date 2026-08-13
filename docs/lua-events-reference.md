@@ -27,8 +27,10 @@ Fires in this order:
 simplest "the game is playable now" hook, matching the request for an
 OnGameStart-style example.
 
-## Registration pattern (from pz-modding-guide/lua-scripting.md, corroborated
-## by the wiki's own example on Lua_(API))
+## Registration pattern
+
+Source: `pz-modding-guide/lua-scripting.md`, corroborated by the wiki's own
+example on `Lua_(API)`.
 
 ```lua
 local function myHandler(...)

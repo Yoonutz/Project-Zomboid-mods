@@ -2,7 +2,7 @@
 
 Vendored snapshot of the community-maintained Build 42 modding guide.
 
-- Origin: https://github.com/gotmayonase/pz-modding-guide
+- Origin: <https://github.com/gotmayonase/pz-modding-guide>
 - Commit: `ce2ec9594a4ccd176c0eef4d61c0476281f2e7c0` (2026-04-05)
 - Fetched: 2026-08-13
 - License/attribution: see the upstream repo. This is a read-only reference

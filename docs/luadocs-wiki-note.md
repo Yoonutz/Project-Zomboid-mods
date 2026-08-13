@@ -2,9 +2,9 @@
 
 Fetched 2026-08-13 from `https://pzwiki.net/wiki/LuaDocs`.
 
-**The wiki page is stale.** Its own banner says: *"This page was last updated
+**The wiki page is stale.** Its own banner says: _"This page was last updated
 for an older version of the current build (42.8.1). The current stable version
-is 42.20.2, so information on this page may be inaccurate."* The page is a
+is 42.20.2, so information on this page may be inaccurate."_ The page is a
 pointer/description page, not the API reference itself.
 
 ## The actual current reference
@@ -12,9 +12,9 @@ pointer/description page, not the API reference itself.
 LuaDocs is a Doxygen-generated API reference maintained separately from the
 wiki. Use these, not the wiki page:
 
-- Site: https://demiurgequantified.github.io/ProjectZomboidLuaDocs/
-- Source: https://github.com/demiurgeQuantified/ProjectZomboidLuaDocs
-- Underlying generator: https://github.com/demiurgeQuantified/rosetta_doxygen
+- Site: <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/>
+- Source: <https://github.com/demiurgeQuantified/ProjectZomboidLuaDocs>
+- Underlying generator: <https://github.com/demiurgeQuantified/rosetta_doxygen>
 
 It documents: callbacks, Lua events, hooks, a link to the current JavaDocs,
 classes with their functions/hierarchy/inheritance, and the source file
