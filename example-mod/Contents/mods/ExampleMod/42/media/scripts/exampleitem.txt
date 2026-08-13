@@ -1,0 +1,13 @@
+// Verified against docs/pz-modding-guide/item-scripting.md (B42 "Basic Item
+// Template") -- ItemType=base:normal replaces B41's Type=Normal.
+module ExampleMod
+{
+    item ExampleWidget
+    {
+        DisplayName         = Example Widget,
+        DisplayCategory     = Materials,
+        ItemType            = base:normal,
+        Weight              = 0.5,
+        Icon                = Widget,
+    }
+}

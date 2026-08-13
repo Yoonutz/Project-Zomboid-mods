@@ -1,0 +1,4 @@
+name=Example Mod
+id=ExampleMod
+author=YourName
+description=Worked example: one base:normal item and one OnGameStart Lua hook.

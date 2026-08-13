@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=My Mod Display Name
+description=Workshop description (can be longer than mod.info's).
+visibility=public
+tags=Build 42;Items

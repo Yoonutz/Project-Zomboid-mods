@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=Example Mod
+description=Worked example: one base:normal item and one OnGameStart Lua hook.
+visibility=public
+tags=Build 42;Items
