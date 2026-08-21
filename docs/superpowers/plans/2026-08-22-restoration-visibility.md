@@ -1,5 +1,12 @@
 # Restoration Visibility Implementation Plan
 
+> **STATUS: implemented on branch `restoration-visibility`, 2026-08-22.** All tasks are done;
+> shipped version is `0.1.7`, not the `0.1.16` this document's steps predicted - Task 0's three
+> commits and the batching of tasks 1-12 into one commit each consumed fewer slots than the
+> per-task ladder assumed. Every code-level gate passes: 29/29 parse, language server clean across
+> 31 files, prettier clean. **Nothing here has been loaded in Project Zomboid**, so every task's
+> in-game check remains open, and Task 0's check needs two connected players.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the Crew Journal show exactly why each claimed building does or does not count as restored, and do the same for the livestock track - fixing the window check that lets broken glass pass, making tier 2's "three adjacent" and livestock stages L1 and L3 into real checks, surfacing both hold countdowns, and renaming every tier and stage that promised more than it verified.
