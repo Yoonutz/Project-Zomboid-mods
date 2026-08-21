@@ -41,6 +41,61 @@ A building counts as restored when all of these hold:
 Each condition is observable from the game's own state, so the mod can check
 rather than take the player's word for it.
 
+## The livestock track
+
+A restored street with nothing living on it is a film set. This second track
+runs alongside the building tiers and finishes the same campaign: the town is
+rebuilt when it is inhabited, not merely repaired.
+
+It belongs to the same two trades. Every structure an animal needs is carpentry
+work, verified in the game's own scripts:
+
+| Structure      | Requirement  | Source                                                   |
+| -------------- | ------------ | -------------------------------------------------------- |
+| Log fence      | `Woodwork:1` | `entities/fences_low/entity_logfenceopen.txt`            |
+| Chicken hutch  | `Woodwork:3` | `entities/animals/workstations/entity_chickenhutch.txt`  |
+| Feeding trough | `Woodwork:3` | `entities/animals/workstations/entity_feedingtrough.txt` |
+
+The Lumberjack supplies the timber, the Carpenter raises the pen. Neither leaves
+their trade to keep animals, which is the same test every other tier had to pass.
+
+### The four livestock stages
+
+| Stage | Name        | Condition                                                |
+| ----- | ----------- | -------------------------------------------------------- |
+| L1    | The Pen     | a fenced enclosure with a working feeding trough         |
+| L2    | First Stock | at least one living animal kept inside the claimed block |
+| L3    | The Hutch   | a chicken hutch built and occupied                       |
+| L4    | The Herd    | animals surviving a full season, second generation born  |
+
+L4 pairs naturally with the block-holding requirement of tier 5: a herd that
+lasts a season proves the town works, not just that it stands.
+
+### Where livestock meets the buildings
+
+Tier 5 gains one extra condition: **the claimed block supports living animals**.
+A crew that restores every wall but keeps nothing alive has built a monument,
+not a town.
+
+### Verified animal APIs
+
+```lua
+-- identifying and inspecting an animal
+animal:getAnimalType()                   -- client/ISUI/Animal/ISAnimalContextMenu.lua:1134
+animal:getBreed()                        -- client/ISUI/Animal/ISAnimalContextMenu.lua:34
+animal:isBaby()                          -- client/ISUI/Animal/ISAnimalUI.lua:161
+body:isAnimal()                          -- client/DebugUIs/DebugContextMenu.lua:492
+instanceof(obj, "IsoAnimal")             -- client/DebugUIs/DebugContextMenu.lua:619
+```
+
+`isBaby()` is what makes "second generation born" checkable rather than a claim -
+a baby animal inside the claimed block is direct evidence the herd bred.
+
+**Unverified, check before relying on it:** a way to enumerate every animal
+within an area, and a direct read of an animal zone's contents. If absent, L2
+and L4 fall back to counting animals seen near the crew, which is weaker but
+still evidence rather than a self-report.
+
 ## How progress is measured
 
 The crew state already counts `treesFelled`, `mastersMarkCrafted`,
@@ -55,6 +110,10 @@ The crew state already counts `treesFelled`, `mastersMarkCrafted`,
 | `roomsFurnished`    | rooms holding at least one crew-built piece    |
 | `perimeterSealed`   | boolean, set when tier 4 passes                |
 | `nightsHeld`        | nights survived inside the claimed block       |
+| `pensBuilt`         | fenced enclosures with a working trough        |
+| `hutchesBuilt`      | chicken hutches raised and occupied            |
+| `animalsKept`       | living animals counted inside the block        |
+| `animalsBorn`       | babies seen inside the block - proof of a herd |
 
 ## Verified API basis
 
