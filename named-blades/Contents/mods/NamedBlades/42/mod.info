@@ -1,0 +1,7 @@
+name=Named Blades
+id=NamedBlades
+author=Ionut F
+description=Weapons remember their kills, earn names and small perks.
+pzversion=42
+modversion=0.1.0
+versionMin=42.0.0

@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=Two-Man Crew
+description=Co-op bonuses for a Lumberjack and Carpenter working as a crew.
+visibility=public
+tags=Build 42;Multiplayer;Misc

@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=Scavenger's Eye
+description=Read containers and corpses for traces of earlier looting.
+visibility=public
+tags=Build 42;Interface

@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=Last Words
+description=Your survivor mutters when things turn bad.
+visibility=public
+tags=Build 42;Misc

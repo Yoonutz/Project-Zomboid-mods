@@ -10,3 +10,7 @@ Thumbs.db
 
 # brainstorming visual-companion scratch (mockups + session state, local only)
 .superpowers/
+
+# local lua syntax checker deps
+node_modules/
+package-lock.json

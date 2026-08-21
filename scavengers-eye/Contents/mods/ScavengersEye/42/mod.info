@@ -1,0 +1,7 @@
+name=Scavenger's Eye
+id=ScavengersEye
+author=Ionut F
+description=Read containers and corpses for traces of earlier looting.
+pzversion=42
+modversion=0.1.0
+versionMin=42.0.0

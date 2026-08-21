@@ -1,0 +1,6 @@
+version=1
+workshopid=0
+title=Named Blades
+description=Weapons remember their kills, earn names and small perks.
+visibility=public
+tags=Build 42;Weapons
