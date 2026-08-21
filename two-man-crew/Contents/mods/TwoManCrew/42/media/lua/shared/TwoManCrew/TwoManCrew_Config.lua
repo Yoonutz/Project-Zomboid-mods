@@ -84,15 +84,24 @@ TwoManCrew.DistressCall = {
 -- vanilla server/ tree is inside a commented-out block
 -- (server/Seasons/season.lua:121-124).
 --
--- getOnlinePlayers() is a dedicated-server call, so singleplayer and the local
--- half of a listen server go through getSpecificPlayer instead - the branch
--- vanilla itself uses at server/XpSystem/XpUpdate.lua:301-303. This repo has
+-- getOnlinePlayers() covers every multiplayer case, host and client alike.
+-- Singleplayer has no online-player list at all, so it goes through
+-- getSpecificPlayer instead - the same branch vanilla uses at
+-- server/XpSystem/XpUpdate.lua:301-303. This repo has
 -- already shipped one singleplayer regression from ignoring that case
 -- (commit 4e8980c), so the branch is deliberate, not defensive noise.
 function TwoManCrew.getAllPlayers()
 	local result = {}
 
-	if isServer() then
+	-- Any multiplayer context, either side of the connection. NOT isServer()
+	-- alone: that is false on a listen/co-op host and on every remote client,
+	-- both of which would then fall through to the split-screen branch below
+	-- and never see the other player - the exact bug this function exists to
+	-- fix. getOnlinePlayers() is valid client-side too, verified at
+	-- client/Chat/ISChat.lua:560 and client/DebugUIs/ISTriggerThunderUI.lua:13.
+	-- Vanilla's own multiplayer test is this same pair
+	-- (shared/NPCs/MainCreationMethods.lua:104).
+	if isClient() or isServer() then
 		local players = getOnlinePlayers()
 		if players then
 			for i = 0, players:size() - 1 do
