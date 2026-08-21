@@ -68,3 +68,33 @@ local function onServerCommand(module, command, args)
 end
 
 Events.OnServerCommand.Add(onServerCommand)
+
+-- Keybind for the FULL report. Without this, requestCrewReport above is
+-- defined but never called, and the tally and journal can never be seen.
+--
+-- TwoManCrew_CrewPanel shows a permanent at-a-glance summary and refreshes
+-- itself from the same reply, so this key is not the only way in. It stays
+-- because the panel has room for one journal line and a total; this prints
+-- the full breakdown on demand.
+--
+-- Same pattern as TwoManCrew_DistressCall: a direct OnKeyStartPressed
+-- listener compared against a literal Keyboard.KEY_* constant, as vanilla
+-- itself does (client/ISUI/ISUIHandler.lua:35, registered at :102; raw
+-- keycode comparison at client/ISUI/Maps/Editor/WorldMapEditor.lua:209).
+--
+-- Default key: F7. Checked against every bind.key entry in
+-- shared/keyBinding.lua and every Keyboard.KEY_* literal in the installed
+-- lua tree - F7 appears in neither. F9 is taken by the distress call,
+-- F10 and F11 by vanilla bindings.
+local REPORT_KEY = Keyboard.KEY_F7
+
+local function onKeyStartPressed(key)
+	if key ~= REPORT_KEY then return end
+
+	local player = getPlayer()
+	if not player then return end
+
+	TwoManCrew.Client.requestCrewReport(player)
+end
+
+Events.OnKeyStartPressed.Add(onKeyStartPressed)

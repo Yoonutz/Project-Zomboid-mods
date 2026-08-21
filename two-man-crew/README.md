@@ -37,9 +37,23 @@ harmless in single-player.
 | Crew Journal          | A running log of who did what, and when              |
 | Distress Call         | **F9** marks your position for your partner          |
 
+## On-screen crew panel
+
+A small panel sits in the top-left corner while you play. No key needed - it
+shows, at a glance:
+
+- whether your partner is nearby, or that you are working alone
+- a red warning when your partner has zombies on them
+- how many crew deeds you have racked up
+- the latest line from the crew journal
+
+Project Zomboid does not let mods add a real moodle - that list is fixed in the
+game itself - so this is a custom panel instead.
+
 ## Controls
 
 - **F9** - send a distress call. Your partner sees your direction and distance.
+- **F7** - print the full crew tally and journal, more detail than the panel fits.
 
 ## Requirements
 
