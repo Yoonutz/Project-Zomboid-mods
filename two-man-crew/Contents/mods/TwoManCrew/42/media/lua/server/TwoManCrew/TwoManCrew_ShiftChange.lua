@@ -74,20 +74,14 @@ end
 local function EveryTenMinutes()
 	if not isNightHour() then return end
 
-	local players = IsoPlayer.getPlayers()
-	if not players then return end
-
-	for i = 0, players:size() - 1 do
-		local player = players:get(i)
-		if player then
-			if not TwoManCrew.onCooldown(player, SHIFT_KEY, SHIFT_LENGTH_SECONDS) then
-				local partner = TwoManCrew.getPartner(player)
-				-- Alone: silent no-op per SPEC. No cooldown is started, so a
-				-- solo player who later finds a partner is never penalized
-				-- for the time spent alone.
-				if partner then
-					awardShiftChangeBonus(player, partner)
-				end
+	for _, player in ipairs(TwoManCrew.getAllPlayers()) do
+		if not TwoManCrew.onCooldown(player, SHIFT_KEY, SHIFT_LENGTH_SECONDS) then
+			local partner = TwoManCrew.getPartner(player)
+			-- Alone: silent no-op per SPEC. No cooldown is started, so a
+			-- solo player who later finds a partner is never penalized
+			-- for the time spent alone.
+			if partner then
+				awardShiftChangeBonus(player, partner)
 			end
 		end
 	end

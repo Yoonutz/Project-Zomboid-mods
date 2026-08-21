@@ -263,12 +263,8 @@ end
 -- crew-built furniture from map-spawned furniture, so "furnished" degrades
 -- to a proximity-witnessed claim the crew must be present to make.
 local function crewPresentNear(bx, by)
-	local players = IsoPlayer.getPlayers()
-	if not players then return false end
-
-	for i = 0, players:size() - 1 do
-		local p = players:get(i)
-		if p and p:DistTo(bx, by) <= CLAIM_PROXIMITY_RADIUS then
+	for _, p in ipairs(TwoManCrew.getAllPlayers()) do
+		if p:DistTo(bx, by) <= CLAIM_PROXIMITY_RADIUS then
 			return true
 		end
 	end

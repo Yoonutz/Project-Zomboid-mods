@@ -38,6 +38,19 @@ function getPlayer(index) end
 ---@return any
 function getSpecificPlayer(index) end
 
+--- Dedicated-server only: the Java-backed list of connected players
+--- (:size() / :get(i), 0-indexed). Verified in the installed source at
+--- server/Foraging/forageServer.lua:463, server/XpSystem/XpUpdate.lua:300,
+--- server/ClientCommands.lua:628.
+---@return any
+function getOnlinePlayers() end
+
+--- Number of players active on THIS machine (1, or more with split-screen).
+--- Verified at client/Fishing/FishingHandler.lua:6 and
+--- server/XpSystem/XpUpdate.lua:301.
+---@return number
+function getNumActivePlayers() end
+
 ---@return any
 function getGameTime() end
 

@@ -56,8 +56,12 @@
 --   getGameTime():getWorldAgeHours()         server/Farming/SFarmingSystem.lua:258
 --   instanceof(obj, "IsoAnimal")             client/DebugUIs/DebugContextMenu.lua:619
 --   animal:isBaby()                          client/ISUI/Animal/ISAnimalUI.lua:161
---   IsoPlayer.getPlayers() / :size() / :get(i), 0-indexed -
---                                            client/ISUI/PlayerData/ISPlayerData.lua:186-187
+--   TwoManCrew.getAllPlayers()               shared/TwoManCrew/TwoManCrew_Config.lua
+--                                            (wraps getOnlinePlayers on a server and
+--                                            getSpecificPlayer otherwise - see that
+--                                            function's comment for the vanilla citations;
+--                                            IsoPlayer.getPlayers() is NOT used, it cannot
+--                                            see remote players)
 --   player:DistTo(x, y)                      client/Farming/CFarmingSystem.lua:47
 --
 -- UNVERIFIED, fallback used per GOALS.md's own stated fallback clause:
@@ -133,27 +137,21 @@ end
 -- of any online crew member. Fallback census per GOALS.md's own stated
 -- fallback clause - see file header for why no true area enumeration is used.
 local function censusNearbyAnimals()
-	local players = IsoPlayer.getPlayers()
-	if not players then return 0, 0 end
-
 	local seen = {}
 	local total, babies = 0, 0
 
-	for i = 0, players:size() - 1 do
-		local player = players:get(i)
-		if player then
-			local square = player:getSquare()
-			if square then
-				local objects = square:getMovingObjects()
-				if objects then
-					for j = 0, objects:size() - 1 do
-						local obj = objects:get(j)
-						if obj and instanceof(obj, "IsoAnimal") and not seen[obj] then
-							seen[obj] = true
-							total = total + 1
-							if obj:isBaby() then
-								babies = babies + 1
-							end
+	for _, player in ipairs(TwoManCrew.getAllPlayers()) do
+		local square = player:getSquare()
+		if square then
+			local objects = square:getMovingObjects()
+			if objects then
+				for j = 0, objects:size() - 1 do
+					local obj = objects:get(j)
+					if obj and instanceof(obj, "IsoAnimal") and not seen[obj] then
+						seen[obj] = true
+						total = total + 1
+						if obj:isBaby() then
+							babies = babies + 1
 						end
 					end
 				end
@@ -292,14 +290,8 @@ end
 -- ---------------------------------------------------------------------------
 
 local function announceTier(text, journalText)
-	local players = IsoPlayer.getPlayers()
-	if not players then return end
-
-	for i = 0, players:size() - 1 do
-		local player = players:get(i)
-		if player then
-			HaloTextHelper.addText(player, text)
-		end
+	for _, player in ipairs(TwoManCrew.getAllPlayers()) do
+		HaloTextHelper.addText(player, text)
 	end
 
 	if TwoManCrew.Server.addJournal then

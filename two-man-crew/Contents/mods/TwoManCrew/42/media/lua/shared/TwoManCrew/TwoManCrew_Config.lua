@@ -70,51 +70,95 @@ TwoManCrew.DistressCall = {
 	RANGE_TILES = 30,        -- how far a distress call can reach beyond crew radius
 }
 
+-- Returns a plain Lua array of every player this machine can currently see.
+--
+-- THE BUG THIS REPLACES: every server-side and shared caller used
+-- IsoPlayer.getPlayers(), which returns only players on the LOCAL machine
+-- (split-screen). On a dedicated server the remote player is not in that list,
+-- so getPartner() returned nil and every crew feature silently no-opped for the
+-- second player.
+--
+-- Vanilla's own rule, verified: server code uses getOnlinePlayers()
+-- (server/Foraging/forageServer.lua:463, server/XpSystem/XpUpdate.lua:300,
+-- server/ClientCommands.lua:628). The single IsoPlayer.getPlayers() in the whole
+-- vanilla server/ tree is inside a commented-out block
+-- (server/Seasons/season.lua:121-124).
+--
+-- getOnlinePlayers() is a dedicated-server call, so singleplayer and the local
+-- half of a listen server go through getSpecificPlayer instead - the branch
+-- vanilla itself uses at server/XpSystem/XpUpdate.lua:301-303. This repo has
+-- already shipped one singleplayer regression from ignoring that case
+-- (commit 4e8980c), so the branch is deliberate, not defensive noise.
+function TwoManCrew.getAllPlayers()
+	local result = {}
+
+	if isServer() then
+		local players = getOnlinePlayers()
+		if players then
+			for i = 0, players:size() - 1 do
+				local p = players:get(i)
+				if p then table.insert(result, p) end
+			end
+		end
+		return result
+	end
+
+	local count = getNumActivePlayers()
+	if count and count > 0 then
+		for i = 0, count - 1 do
+			local p = getSpecificPlayer(i)
+			if p then table.insert(result, p) end
+		end
+	end
+
+	-- Singleplayer with no split-screen still has exactly one player, and
+	-- getNumActivePlayers() has been seen to report 0 during early load.
+	if #result == 0 then
+		local p = getPlayer()
+		if p then table.insert(result, p) end
+	end
+
+	return result
+end
+
 -- Returns a Lua array of other IsoPlayer objects within radius tiles of
--- player, excluding player. Safe to call every tick: allocates a table only
--- when at least one other player exists in range.
--- Verified: IsoPlayer.getPlayers() returns a Java-backed list (:size()/:get(i),
--- 0-indexed) per client/ISUI/PlayerData/ISPlayerData.lua:186-187 and
--- server/Seasons/season.lua:124-125. player:DistTo(x, y) takes numeric
--- coordinates per client/Farming/CFarmingSystem.lua:47.
+-- player, excluding player, or nil when nobody else is in range (callers rely
+-- on the nil, not an empty table).
+-- Verified: player:DistTo(x, y) takes numeric coordinates per
+-- client/Farming/CFarmingSystem.lua:47.
 function TwoManCrew.getNearbyCrew(player, radius)
 	if not player then return nil end
 	radius = radius or TwoManCrew.CREW_RADIUS
 
-	local players = IsoPlayer.getPlayers()
-	if not players then return nil end
-
 	local px, py = player:getX(), player:getY()
-	local crew = nil
+	local found = nil
 
-	for i = 0, players:size() - 1 do
-		local other = players:get(i)
-		if other and other ~= player then
+	for _, other in ipairs(TwoManCrew.getAllPlayers()) do
+		if other ~= player then
 			if other:DistTo(px, py) <= radius then
-				if not crew then crew = {} end
-				crew[#crew + 1] = other
+				found = found or {}
+				table.insert(found, other)
 			end
 		end
 	end
 
-	return crew
+	return found
 end
 
--- Returns the single nearest other player within crew radius, or nil.
-function TwoManCrew.getPartner(player)
+-- Returns the single nearest other player within radius, or nil.
+-- radius defaults to CREW_RADIUS so existing callers are unchanged; the
+-- distress call passes its own wider range.
+function TwoManCrew.getPartner(player, radius)
 	if not player then return nil end
-
-	local players = IsoPlayer.getPlayers()
-	if not players then return nil end
+	radius = radius or TwoManCrew.CREW_RADIUS
 
 	local px, py = player:getX(), player:getY()
 	local nearest, nearestDist = nil, nil
 
-	for i = 0, players:size() - 1 do
-		local other = players:get(i)
-		if other and other ~= player then
+	for _, other in ipairs(TwoManCrew.getAllPlayers()) do
+		if other ~= player then
 			local dist = other:DistTo(px, py)
-			if dist <= TwoManCrew.CREW_RADIUS then
+			if dist <= radius then
 				if not nearestDist or dist < nearestDist then
 					nearest = other
 					nearestDist = dist

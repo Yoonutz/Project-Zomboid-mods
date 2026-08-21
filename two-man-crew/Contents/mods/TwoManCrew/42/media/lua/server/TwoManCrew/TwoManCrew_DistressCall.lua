@@ -19,7 +19,12 @@ local function OnClientCommand(module, command, player, args)
 		return
 	end
 
-	local partner = TwoManCrew.getPartner(player)
+	-- Search the full advertised distress range, not CREW_RADIUS. Previously
+	-- this used the default 12-tile getPartner, so RANGE_TILES (30) was checked
+	-- afterwards against a partner who was already guaranteed to be within 12 -
+	-- the wider range could never apply, and a call only worked when the partner
+	-- was already beside you.
+	local partner = TwoManCrew.getPartner(player, cfg.RANGE_TILES)
 	if not partner then return end
 
 	-- Distress range is intentionally wider than crew radius (config
