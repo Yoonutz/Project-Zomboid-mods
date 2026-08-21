@@ -73,7 +73,7 @@ when it parses; it is done when the stated in-game observation holds.
 - **Bump `modversion` in the same commit as any behaviour change**, in BOTH
   `two-man-crew/Contents/mods/TwoManCrew/mod.info` and
   `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`. They must stay byte-identical. Current
-  version is `0.1.2`. This plan ends at `0.1.11`.
+  version is `0.1.2`. This plan ends at `0.1.13`.
 - **Never touch the installed game folder.** `~/Zomboid/mods/TwoManCrew` is deliberately pinned to
   `0.1.0` to match another player. Do not deploy, sync, or "helpfully update" it.
 - **Do not add Claude attribution to commits.**
@@ -1948,7 +1948,285 @@ git commit -m "Rename livestock stages to match what they actually verify"
 
 ---
 
-## Task 13: Final verification pass
+## Task 14: Fit the content without scrolling
+
+**Why:** the list holds about 15 rows at the default window size. Seven claimed buildings rendered
+as a header plus two lines each is 15 rows exactly - the last building falls off the bottom, and
+the campaign view with its new census lines overflows too. The list box does support a scroll wheel
+(`ISScrollingListBox:onMouseWheel`, `client/ISUI/ISScrollingListBox.lua:347`, wired up by
+`instantiate()` calling `addScrollBars()` at `:53-64`), but reaching for the wheel to read a status
+panel is friction the panel should not need. Fit the content instead.
+
+Two changes, together roughly doubling what fits:
+
+1. **Compact font.** `setFont(UIFont.NewSmall, 1)` shrinks both the glyphs and the row height.
+   Verified: `ISScrollingListBox:setFont(font, padY)` sets `font`, `fontHgt` and `itemheight`
+   together (`client/ISUI/ISScrollingListBox.lua:703-708`); vanilla passes `UIFont.Small` with a
+   pad at `client/DebugUIs/DebugChunkState/DebugChunkStateUI.lua:115`, and puts `UIFont.NewSmall`
+   on list boxes at `client/DebugUIs/DebugMenu/GlobalModData/GlobalModData.lua:42`.
+2. **One-line reasons.** The Buildings view currently emits a row per building plus an indented
+   reason row. Folding the reason onto the same line halves the row count.
+
+Expected result at the default 440x320 window: about 19 rows visible instead of 15, and seven
+buildings occupying 8 rows instead of 15.
+
+**Files:**
+
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/mod.info`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`
+
+- [ ] **Step 1: Set the compact font on the list**
+
+In `createChildren`, immediately after `self.list.drawBorder = true`, add:
+
+```lua
+	-- Compact font so a full claim fits without reaching for the scroll wheel.
+	-- setFont sets the font, its height and the row height together
+	-- (ISScrollingListBox.lua:703-708), so ROW must not be used for row height
+	-- after this point - the list owns it now.
+	self.list:setFont(UIFont.NewSmall, 1)
+```
+
+Then delete the line `self.list.itemheight = ROW` immediately above it. Leaving both would set the
+row height twice, and the `ROW` value would win or lose depending on ordering - exactly the kind of
+silent conflict that is hard to spot later.
+
+- [ ] **Step 2: Fold the reason onto the building's own line**
+
+In `populateBuildings`, replace the per-building loop body with:
+
+```lua
+	for i, row in ipairs(detail) do
+		local mark = "??"
+		if row.status == "restored" then
+			mark = "DONE"
+		elseif row.status == "not_restored" then
+			mark = "WORK"
+		end
+
+		-- Reason goes on the same line rather than an indented second row.
+		-- Two rows per building overflowed the list at seven buildings, and
+		-- the panel should not need scrolling to be read.
+		local line = string.format("[%s] %d. %s units", mark, i, tostring(row.units))
+		local reason = TwoManCrewJournalWindow.describeRow(row)
+		if reason then
+			line = line .. " - " .. reason
+		end
+
+		self.list:addItem(line, row)
+	end
+```
+
+- [ ] **Step 3: Shorten the reason strings so the folded line fits**
+
+With the reason now sharing the line, the long forms clip at the panel edge. Replace the body of
+`describeRow` with:
+
+```lua
+function TwoManCrewJournalWindow.describeRow(row)
+	if row.status == "restored" then
+		return nil
+	end
+
+	if row.reason then
+		return row.reason
+	end
+
+	if row.status == "unknown" then
+		if row.roomsSeen and row.roomsTotal and row.roomsSeen < row.roomsTotal then
+			return string.format("only %d/%d rooms seen - walk closer", row.roomsSeen, row.roomsTotal)
+		end
+		return "too far - walk closer"
+	end
+
+	local todo = {}
+	if row.windowsOk == false then table.insert(todo, "windows") end
+	if row.doorsOk == false then table.insert(todo, "doors") end
+	if row.noCorpses == false then table.insert(todo, "corpses") end
+	if row.crewPresent == false then table.insert(todo, "nobody here") end
+
+	if #todo == 0 then
+		return "blocked - check the logs"
+	end
+	return "needs " .. table.concat(todo, ", ")
+end
+```
+
+- [ ] **Step 4: Shorten the server-supplied reason to match**
+
+The one server-side reason string is long enough to clip. In
+`two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua`,
+inside `checkBuildingRestored`, change:
+
+```lua
+		detail.reason = "no crew member present - stand near the building and check again"
+```
+
+to:
+
+```lua
+		detail.reason = "nobody here - stand inside it"
+```
+
+- [ ] **Step 5: Verify parse and diagnostics**
+
+```bash
+cd two-man-crew && node check-lua.mjs
+```
+
+Expected: `29/29 parsed`.
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumneko.lua-3.19.1-win32-x64/server/bin/lua-language-server.exe" --check=. --checklevel=Warning
+```
+
+Expected: `Diagnosis completed, no problems found`. If `setFont` or `UIFont.NewSmall` is flagged,
+add the stub to `types/pz.lua` rather than silencing it:
+
+```lua
+---@param font any
+---@param padY number|nil
+function ISScrollingListBox:setFont(font, padY) end
+```
+
+- [ ] **Step 6: Bump modversion to 0.1.12 in both files and commit**
+
+```bash
+git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
+git commit -m "Fit the journal list without scrolling: compact font, one-line reasons"
+```
+
+- [ ] **Step 7: In-game check**
+
+1. Open the Buildings view on a claim of at least six buildings.
+2. Expected: every building visible at once, no scrolling needed.
+3. Expected: each line reads like `[WORK] 3. 6 units - needs windows, corpses`, with nothing
+   clipped at the right edge.
+4. Open the Campaign view.
+5. Expected: all nine tier and stage rows plus the census lines fit without scrolling.
+6. If anything still clips, the panel is too narrow for the longest reason - report the exact line
+   rather than trimming text further, so the fix can be a wider default window instead.
+
+---
+
+## Task 15: Remove the redundant Check progress button
+
+**Why:** the button forces an immediate rescan, which was genuinely the only way to avoid waiting
+for the ten-minute tick. But Task 5 makes opening the Buildings view request that same rescan, so
+the button now duplicates it. Removing it leaves three buttons sharing the width, which also gives
+every label room to breathe.
+
+**Important, so this is not "simplified" back later:** neither `Refresh` nor the Campaign view
+rescans anything. `getTierProgress` only reads stored state, and `requestCrewReport` only re-sends
+the last report. The rescan must keep happening somewhere, and after this task that somewhere is
+the Buildings view. Do not remove the rescan from `onToggleView`.
+
+**Files:**
+
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/mod.info`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`
+
+- [ ] **Step 1: Delete the button's creation**
+
+In `createChildren`, delete the whole `self.checkButton` block, including its comment:
+
+```lua
+	-- Forces an immediate rescan of the claim. Without this button the server's
+	-- requestRestorationCheck handler had no caller at all: restoration only
+	-- ever updated on the ten-minute tick, and a crew that had just finished a
+	-- house had no way to see it counted.
+	self.checkButton = ISButton:new(
+		PAD, 0, BUTTON_W, ROW,
+		"Check progress", self, TwoManCrewJournalWindow.onCheckRestoration
+	)
+	self.checkButton:initialise()
+	self:addChild(self.checkButton)
+```
+
+- [ ] **Step 2: Drop it from the layout row**
+
+In `layout()`, change the buttons list from four entries to three:
+
+```lua
+	local buttons = { self.refreshButton, self.claimButton, self.viewButton }
+```
+
+- [ ] **Step 3: Keep the handler, and say why**
+
+Do NOT delete `onCheckRestoration`. Replace its comment block with:
+
+```lua
+-- Asks the server to rescan the claim now rather than waiting for the ten-minute
+-- tick. The server owns the verdict; this only requests it.
+--
+-- No longer bound to a button - opening the Buildings view triggers the rescan
+-- instead (see onToggleView). Kept because it is the only on-demand rescan
+-- entry point, and because the server's requestRestorationCheck handler would
+-- otherwise have no caller at all.
+```
+
+- [ ] **Step 4: Have the Buildings view force the rescan, not just fetch detail**
+
+In `onToggleView`, replace the Buildings branch with:
+
+```lua
+	-- Entering the Buildings view forces a fresh rescan, which is what the
+	-- removed "Check progress" button used to do. Requesting the detail alone
+	-- would render whatever the last ten-minute tick happened to leave behind.
+	if self.activeView == "buildings" then
+		self:onCheckRestoration()
+		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+			TwoManCrew.Client.requestClaimDetail(getPlayer())
+		end
+	end
+```
+
+Note `requestClaimDetail` already rescans server-side before replying (Task 3, Step 2), so this is
+belt and braces; the explicit call also makes the halo message appear, which tells the crew the
+scan happened.
+
+- [ ] **Step 5: Confirm nothing still references the deleted button**
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && grep -rn "checkButton" two-man-crew/Contents/mods/TwoManCrew/42/media/lua/
+```
+
+Expected: no output.
+
+- [ ] **Step 6: Verify parse and diagnostics**
+
+```bash
+cd two-man-crew && node check-lua.mjs
+```
+
+Expected: `29/29 parsed`.
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumneko.lua-3.19.1-win32-x64/server/bin/lua-language-server.exe" --check=. --checklevel=Warning
+```
+
+Expected: `Diagnosis completed, no problems found`.
+
+- [ ] **Step 7: Bump modversion to 0.1.13 in both files and commit**
+
+```bash
+git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
+git commit -m "Drop the Check progress button now the Buildings view rescans on open"
+```
+
+- [ ] **Step 8: In-game check**
+
+1. Expected: three buttons - Refresh, Claim a block, View - each noticeably wider than before.
+2. Switch to the Buildings view.
+3. Expected: the "Checking the claim..." halo message appears, and the list reflects a fresh scan.
+4. Finish a building, switch away from Buildings and back.
+5. Expected: it counts immediately rather than after up to ten minutes.
+
+---
+
+## Task 16: Final verification pass
 
 - [ ] **Step 1: Run all three gates one final time**
 
@@ -1970,13 +2248,13 @@ cd "d:/Dropbox/Apps/Project Zomboid" && npx prettier --check "*.md" "docs/*.md" 
 
 Expected: `All matched files use Prettier code style!`
 
-- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.11**
+- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.13**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && grep modversion two-man-crew/Contents/mods/TwoManCrew/mod.info
 ```
 
-Expected: no diff output, then `modversion=0.1.11`.
+Expected: no diff output, then `modversion=0.1.13`.
 
 - [ ] **Step 3: Confirm no Claude attribution entered any commit**
 
