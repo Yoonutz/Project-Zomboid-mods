@@ -86,7 +86,13 @@ function TwoManCrewJournalWindow:createChildren()
 	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, ROW)
 	self.list:initialise()
 	self.list:instantiate()
-	self.list.itemheight = ROW
+	-- Compact font so a full claim fits without reaching for the scroll wheel.
+	-- setFont sets the font, its height and the row height together
+	-- (client/ISUI/ISScrollingListBox.lua:703-708), so ROW must not be assigned
+	-- to itemheight after this - the list owns row height now. Vanilla drives
+	-- list boxes the same way at
+	-- client/DebugUIs/DebugMenu/GlobalModData/GlobalModData.lua:42.
+	self.list:setFont(UIFont.NewSmall, 1)
 	self.list.selected = -1
 	self.list.drawBorder = true
 	self:addChild(self.list)
@@ -114,16 +120,10 @@ function TwoManCrewJournalWindow:createChildren()
 	self.viewButton:initialise()
 	self:addChild(self.viewButton)
 
-	-- Forces an immediate rescan of the claim. Without this button the server's
-	-- requestRestorationCheck handler had no caller at all: restoration only
-	-- ever updated on the ten-minute tick, and a crew that had just finished a
-	-- house had no way to see it counted.
-	self.checkButton = ISButton:new(
-		PAD, 0, BUTTON_W, ROW,
-		"Check progress", self, TwoManCrewJournalWindow.onCheckRestoration
-	)
-	self.checkButton:initialise()
-	self:addChild(self.checkButton)
+	-- No "Check progress" button. It existed to force an immediate rescan, but
+	-- opening the Buildings view now does that (see onToggleView), so the
+	-- button only duplicated it. Three buttons also leaves every label room to
+	-- breathe. onCheckRestoration survives as the rescan entry point.
 
 	-- Every child above is created at a placeholder position; layout() is the
 	-- single owner of where they actually sit, so the window is laid out the
@@ -167,7 +167,7 @@ function TwoManCrewJournalWindow:layout()
 
 	-- Buttons share the usable width evenly, so they always fit whatever the
 	-- window has been resized to rather than overflowing a fixed layout.
-	local buttons = { self.refreshButton, self.claimButton, self.viewButton, self.checkButton }
+	local buttons = { self.refreshButton, self.claimButton, self.viewButton }
 	local gap = 6
 	local usable = self.width - PAD * 2 - gap * (#buttons - 1)
 	local each = math.floor(usable / #buttons)
@@ -214,9 +214,14 @@ function TwoManCrewJournalWindow:onRefresh()
 	end
 end
 
--- Asks the server to rescan the claim now rather than waiting for the timer.
--- The server owns the verdict; this only requests it. Reply is handled in
--- TwoManCrew_TierReport.lua's OnServerCommand, which refreshes this window.
+-- Asks the server to rescan the claim now rather than waiting for the
+-- ten-minute tick. The server owns the verdict; this only requests it. Reply is
+-- handled in TwoManCrew_TierReport.lua's OnServerCommand.
+--
+-- No longer bound to a button - opening the Buildings view calls this instead
+-- (see onToggleView). Kept because it is the only on-demand rescan entry point,
+-- and without it the server's requestRestorationCheck handler would have no
+-- caller at all.
 function TwoManCrewJournalWindow:onCheckRestoration()
 	local player = getPlayer()
 	if not player then return end
@@ -256,7 +261,13 @@ function TwoManCrewJournalWindow:onToggleView()
 	self.activeView = nextView(self.activeView)
 	self.viewButton:setTitle(VIEW_LABEL[nextView(self.activeView)])
 
+	-- Entering the Buildings view forces a fresh rescan, which is what the
+	-- removed "Check progress" button used to do. Requesting the detail alone
+	-- would render whatever the last ten-minute tick happened to leave behind,
+	-- and neither Refresh nor the Campaign view rescans anything - they only
+	-- re-read stored state.
 	if self.activeView == "buildings" then
+		self:onCheckRestoration()
 		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
 			TwoManCrew.Client.requestClaimDetail(getPlayer())
 		end
@@ -462,14 +473,13 @@ function TwoManCrewJournalWindow.describeRow(row)
 		return row.reason
 	end
 
+	-- Kept short: the reason now shares the building's line, so a long string
+	-- clips at the panel edge rather than wrapping.
 	if row.status == "unknown" then
 		if row.roomsSeen and row.roomsTotal and row.roomsSeen < row.roomsTotal then
-			return string.format(
-				"can't see it all (%d of %d rooms loaded) - walk closer",
-				row.roomsSeen, row.roomsTotal
-			)
+			return string.format("only %d/%d rooms seen - walk closer", row.roomsSeen, row.roomsTotal)
 		end
-		return "not checkable right now - walk closer and check again"
+		return "too far - walk closer"
 	end
 
 	local todo = {}
@@ -479,9 +489,9 @@ function TwoManCrewJournalWindow.describeRow(row)
 	if row.crewPresent == false then table.insert(todo, "nobody here") end
 
 	if #todo == 0 then
-		return "blocked, but no condition reported - check the logs"
+		return "blocked - check the logs"
 	end
-	return "needs: " .. table.concat(todo, ", ")
+	return "needs " .. table.concat(todo, ", ")
 end
 
 -- Renders one line per claimed building plus an indented reason line, so the
@@ -520,15 +530,16 @@ function TwoManCrewJournalWindow:populateBuildings()
 			mark = "WORK"
 		end
 
-		self.list:addItem(
-			string.format("[%s] Building %d  (%s work units)", mark, i, tostring(row.units)),
-			row
-		)
-
+		-- Reason shares the building's own line rather than taking an indented
+		-- second row. Two rows per building overflowed the list at seven
+		-- buildings, and this panel should be readable without scrolling it.
+		local line = string.format("[%s] %d. %s units", mark, i, tostring(row.units))
 		local reason = TwoManCrewJournalWindow.describeRow(row)
 		if reason then
-			self.list:addItem("      " .. reason, row)
+			line = line .. " - " .. reason
 		end
+
+		self.list:addItem(line, row)
 	end
 end
 

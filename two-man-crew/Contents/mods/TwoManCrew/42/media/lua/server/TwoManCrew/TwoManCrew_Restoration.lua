@@ -328,7 +328,8 @@ function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 		-- unknown rather than failing a building that is otherwise finished -
 		-- walking back to it must be able to complete it.
 		detail.status = "unknown"
-		detail.reason = "no crew member present - stand near the building and check again"
+		-- Short on purpose: the client renders this on the building's own row.
+		detail.reason = "nobody here - stand inside it"
 		return false, detail
 	end
 
