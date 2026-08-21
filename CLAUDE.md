@@ -16,6 +16,13 @@
 - No in-game testing happens automatically in this environment. Any change to
   a `.txt` script or `.lua` file is a syntax-level claim only until it's been
   loaded in PZ and checked against `~/Zomboid/Logs/` for parse errors.
+- Any change to a mod's behaviour bumps `modversion` in that mod's `mod.info`
+  in the SAME commit - patch for fixes, minor for new behaviour or assets.
+  TwoManCrew has two `mod.info` files (`Contents/mods/TwoManCrew/mod.info` and
+  `.../42/mod.info`); they must stay identical, and have drifted once already.
+  Leave `pzversion`/`versionMin` (game build) and `workshop.txt`'s `version=1`
+  (Workshop format) alone - neither tracks the mod's own iteration.
+
 - Editor diagnostics come from `.luarc.json` + `types/pz.lua` (a `---@meta`
   stub for the PZ globals). `types/` sits outside every mod's `Contents/`, so
   it is never packaged. When a mod starts using a new engine global, add it to
