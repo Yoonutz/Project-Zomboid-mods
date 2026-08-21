@@ -45,7 +45,13 @@ function ISCraftAction:complete()
 
 	if not ok then error(result) end
 
-	if not isClient() then return result end
+	-- isServer(), not "not isClient()": isClient() is FALSE in singleplayer
+	-- (vanilla's own singleplayer test is `not isClient() and not isServer()`,
+	-- shared/TimedActions/ISEatFoodAction.lua:136), so the old guard returned
+	-- early on every solo game and silently disabled this feature there. The
+	-- real intent is "skip the client half on a dedicated server", which is
+	-- exactly isServer().
+	if isServer() then return result end
 
 	local character = self.character
 	if not character or not instanceof(character, "IsoPlayer") then return result end

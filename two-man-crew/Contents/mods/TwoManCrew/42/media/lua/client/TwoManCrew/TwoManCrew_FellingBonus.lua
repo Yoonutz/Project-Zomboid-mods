@@ -20,7 +20,13 @@ function ISChopTreeAction:perform()
 
 	original_ISChopTreeAction_perform(self)
 
-	if not isClient() then return end
+	-- isServer(), not "not isClient()": isClient() is FALSE in singleplayer
+	-- (vanilla's own singleplayer test is `not isClient() and not isServer()`,
+	-- shared/TimedActions/ISEatFoodAction.lua:136), so the old guard returned
+	-- early on every solo game and silently disabled this feature there. The
+	-- real intent is "skip the client half on a dedicated server", which is
+	-- exactly isServer().
+	if isServer() then return end
 	if not tree or not character then return end
 	if not instanceof(character, "IsoPlayer") then return end
 	if not character:isLocalPlayer() then return end
