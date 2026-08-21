@@ -73,7 +73,7 @@ when it parses; it is done when the stated in-game observation holds.
 - **Bump `modversion` in the same commit as any behaviour change**, in BOTH
   `two-man-crew/Contents/mods/TwoManCrew/mod.info` and
   `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`. They must stay byte-identical. Current
-  version is `0.1.2`. This plan ends at `0.1.13`.
+  version is `0.1.2`. This plan ends at `0.1.14`.
 - **Never touch the installed game folder.** `~/Zomboid/mods/TwoManCrew` is deliberately pinned to
   `0.1.0` to match another player. Do not deploy, sync, or "helpfully update" it.
 - **Do not add Claude attribution to commits.**
@@ -91,6 +91,311 @@ when it parses; it is done when the stated in-game observation holds.
 
 Paths are abbreviated above. In full, every `.../server/` and `.../client/` path is prefixed with
 `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/`.
+
+---
+
+## Task 0: Fix the server-side player lookup and the distress call range
+
+**Do this task FIRST.** Everything else in this plan makes progress _visible_; this makes the crew
+features _work_ for the second player. A better progress panel is worth little if the features
+behind it never fire.
+
+**Bug 1 - the server cannot see remote players.** Seven places call `IsoPlayer.getPlayers()` from
+server-side or shared code. That function returns only players on the local machine (split-screen),
+not remote clients. On a real multiplayer session the second player is absent from that list, so
+`getPartner()` returns nil, `isAlone()` returns true, and every crew feature silently no-ops for
+them.
+
+Verified against the installed source: server code uses `getOnlinePlayers()` -
+`server/Foraging/forageServer.lua:463`, `server/XpSystem/XpUpdate.lua:300`,
+`server/ClientCommands.lua:628`. The only `IsoPlayer.getPlayers()` in vanilla's entire `server/`
+tree sits inside a commented-out block guarded by `if isServer() then return end`
+(`server/Seasons/season.lua:121-124`) - i.e. vanilla itself does not use it server-side.
+
+**The singleplayer half, which matters here.** `getOnlinePlayers()` is a dedicated-server call.
+Vanilla's own pattern branches on `isServer()` and falls back to `getSpecificPlayer` -
+`server/XpSystem/XpUpdate.lua:301-303`:
+
+```lua
+	local playersNumber = isServer() and players:size()-1 or getNumActivePlayers()-1
+	local playerObj = isServer() and players:get(playerIndex) or getSpecificPlayer(playerIndex)
+```
+
+This repo has already shipped one bug from ignoring the singleplayer case (commit `4e8980c`,
+"Fix three features silently disabled in singleplayer"). Do not repeat it: the fix must be a single
+shared helper that handles both, not a blind find-and-replace.
+
+**Bug 2 - the distress call cannot reach past 12 tiles.** `TwoManCrew.DistressCall.RANGE_TILES` is
+30, but both halves find the partner via `getPartner()`, which is hard-capped at
+`CREW_RADIUS = 12`. The 30 is checked afterwards and can never matter. So a distress call only
+works when your partner is already beside you - the one situation it is not needed for.
+
+**Bug 3 - F9 fails silently.** `TwoManCrew_DistressCall.lua:45` returns with no message when
+`isAlone()` is true, so the key appears dead.
+
+**Files:**
+
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/shared/TwoManCrew/TwoManCrew_Config.lua`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_DistressCall.lua`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_DistressCall.lua`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua:266`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_ShiftChange.lua:77`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_SiteRadius.lua:42`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua:136,295`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/mod.info`
+- Modify: `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`
+
+- [ ] **Step 1: Add one shared player-enumeration helper**
+
+In `TwoManCrew_Config.lua`, insert immediately above `function TwoManCrew.getNearbyCrew`:
+
+```lua
+-- Returns a plain Lua array of every player this machine can currently see.
+--
+-- THE BUG THIS REPLACES: every server-side and shared caller used
+-- IsoPlayer.getPlayers(), which returns only players on the LOCAL machine
+-- (split-screen). On a dedicated server the remote player is not in that list,
+-- so getPartner() returned nil and every crew feature silently no-opped for the
+-- second player.
+--
+-- Vanilla's own rule, verified: server code uses getOnlinePlayers()
+-- (server/Foraging/forageServer.lua:463, server/XpSystem/XpUpdate.lua:300,
+-- server/ClientCommands.lua:628). The single IsoPlayer.getPlayers() in the whole
+-- vanilla server/ tree is inside a commented-out block
+-- (server/Seasons/season.lua:121-124).
+--
+-- getOnlinePlayers() is a dedicated-server call, so singleplayer and the local
+-- half of a listen server go through getSpecificPlayer instead - the branch
+-- vanilla itself uses at server/XpSystem/XpUpdate.lua:301-303. This repo has
+-- already shipped one singleplayer regression from ignoring that case
+-- (commit 4e8980c), so the branch is deliberate, not defensive noise.
+function TwoManCrew.getAllPlayers()
+	local result = {}
+
+	if isServer() then
+		local players = getOnlinePlayers()
+		if players then
+			for i = 0, players:size() - 1 do
+				local p = players:get(i)
+				if p then table.insert(result, p) end
+			end
+		end
+		return result
+	end
+
+	local count = getNumActivePlayers()
+	if count and count > 0 then
+		for i = 0, count - 1 do
+			local p = getSpecificPlayer(i)
+			if p then table.insert(result, p) end
+		end
+	end
+
+	-- Singleplayer with no split-screen still has exactly one player, and
+	-- getNumActivePlayers() has been seen to report 0 during early load.
+	if #result == 0 then
+		local p = getPlayer()
+		if p then table.insert(result, p) end
+	end
+
+	return result
+end
+```
+
+- [ ] **Step 2: Route `getNearbyCrew` through the helper**
+
+Replace the body of `TwoManCrew.getNearbyCrew` so it no longer calls `IsoPlayer.getPlayers()`
+directly. Keep its existing signature and return shape:
+
+```lua
+function TwoManCrew.getNearbyCrew(player, radius)
+	if not player then return nil end
+	radius = radius or TwoManCrew.CREW_RADIUS
+
+	local px, py = player:getX(), player:getY()
+	local found = nil
+
+	for _, other in ipairs(TwoManCrew.getAllPlayers()) do
+		if other ~= player then
+			if other:DistTo(px, py) <= radius then
+				found = found or {}
+				table.insert(found, other)
+			end
+		end
+	end
+
+	return found
+end
+```
+
+Before editing, read the current function - if its existing contract differs (for example it
+returns an empty table rather than nil), preserve the existing contract exactly and change only the
+enumeration. Callers depend on it.
+
+- [ ] **Step 3: Give `getPartner` an optional radius, defaulting to today's behaviour**
+
+Replace `TwoManCrew.getPartner` with:
+
+```lua
+-- Returns the single nearest other player within radius, or nil.
+-- radius defaults to CREW_RADIUS so existing callers are unchanged; the
+-- distress call passes its own wider range.
+function TwoManCrew.getPartner(player, radius)
+	if not player then return nil end
+	radius = radius or TwoManCrew.CREW_RADIUS
+
+	local px, py = player:getX(), player:getY()
+	local nearest, nearestDist = nil, nil
+
+	for _, other in ipairs(TwoManCrew.getAllPlayers()) do
+		if other ~= player then
+			local dist = other:DistTo(px, py)
+			if dist <= radius then
+				if not nearestDist or dist < nearestDist then
+					nearest = other
+					nearestDist = dist
+				end
+			end
+		end
+	end
+
+	return nearest
+end
+```
+
+`isAlone` needs no change - it calls `getPartner(player)` with no radius and keeps its meaning.
+
+- [ ] **Step 4: Replace the six remaining direct calls**
+
+In each of these, replace the `IsoPlayer.getPlayers()` enumeration with the helper. The pattern is
+the same everywhere: a `local players = IsoPlayer.getPlayers()` followed by a
+`for i = 0, players:size() - 1 do ... players:get(i)` loop becomes
+`for _, p in ipairs(TwoManCrew.getAllPlayers()) do`.
+
+The six sites:
+
+- `server/TwoManCrew/TwoManCrew_Restoration.lua:266` (in `crewPresentNear`)
+- `server/TwoManCrew/TwoManCrew_ShiftChange.lua:77`
+- `server/TwoManCrew/TwoManCrew_SiteRadius.lua:42`
+- `server/TwoManCrew/TwoManCrew_Tiers.lua:136` (in `censusNearbyAnimals`)
+- `server/TwoManCrew/TwoManCrew_Tiers.lua:295` (in `announceTier`)
+
+Read each function before editing and preserve its existing logic exactly - only the enumeration
+changes. Note the nil-guard difference: `IsoPlayer.getPlayers()` could return nil and each site
+guards for it, but `getAllPlayers()` always returns a table, so those `if not players then return`
+guards become dead and should be removed rather than left misleading.
+
+Each of these files must `require "TwoManCrew/TwoManCrew_Config"` already - verify, and add it if
+any does not.
+
+- [ ] **Step 5: Let the distress call use its own advertised range**
+
+In `server/TwoManCrew/TwoManCrew_DistressCall.lua`, replace:
+
+```lua
+	local partner = TwoManCrew.getPartner(player)
+	if not partner then return end
+```
+
+with:
+
+```lua
+	-- Search the full advertised distress range, not CREW_RADIUS. Previously
+	-- this used the default 12-tile getPartner, so RANGE_TILES (30) was checked
+	-- afterwards against a partner who was already guaranteed to be within 12 -
+	-- the wider range could never apply, and a call only worked when the partner
+	-- was already beside you.
+	local partner = TwoManCrew.getPartner(player, cfg.RANGE_TILES)
+	if not partner then return end
+```
+
+The existing `dist > cfg.RANGE_TILES` check below stays: it re-validates against the
+client-supplied position rather than the player's current one.
+
+- [ ] **Step 6: Make F9 explain itself instead of failing silently**
+
+In `client/TwoManCrew/TwoManCrew_DistressCall.lua`, replace:
+
+```lua
+	if TwoManCrew.isAlone(player) then return end
+```
+
+with:
+
+```lua
+	-- Say something rather than nothing. This used to return silently, so a
+	-- crew with no partner in range experienced F9 as a dead key with no
+	-- indication whether the mod was even loaded.
+	if TwoManCrew.getPartner(player, cfg.RANGE_TILES) == nil then
+		HaloTextHelper.addBadText(player, "No crew partner in range.")
+		return
+	end
+```
+
+- [ ] **Step 7: Verify no direct enumeration survives outside the helper**
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && grep -rn "IsoPlayer.getPlayers" two-man-crew/Contents/mods/TwoManCrew/42/media/lua/
+```
+
+Expected: only comment lines referencing the old approach, and no executable call outside
+`getAllPlayers`. Any remaining live call is a missed site.
+
+- [ ] **Step 8: Verify parse and diagnostics**
+
+```bash
+cd two-man-crew && node check-lua.mjs
+```
+
+Expected: `29/29 parsed`.
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumneko.lua-3.19.1-win32-x64/server/bin/lua-language-server.exe" --check=. --checklevel=Warning
+```
+
+Expected: `Diagnosis completed, no problems found`. If `getOnlinePlayers`, `getNumActivePlayers` or
+`getSpecificPlayer` are flagged as undefined globals, add them to `types/pz.lua` rather than
+silencing:
+
+```lua
+---@return ArrayList
+function getOnlinePlayers() end
+
+---@return number
+function getNumActivePlayers() end
+
+---@param index number
+---@return IsoPlayer
+function getSpecificPlayer(index) end
+```
+
+- [ ] **Step 9: Bump modversion to 0.1.3 in both files and commit**
+
+Note this takes the 0.1.3 slot; every later task in this plan shifts up by one. Confirm both files
+match:
+
+```bash
+cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && echo IDENTICAL
+```
+
+```bash
+git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
+git commit -m "Let server-side code see remote players, and unbreak the distress call"
+```
+
+- [ ] **Step 10: In-game check - REQUIRES BOTH PLAYERS**
+
+This is the one task in the plan that cannot be verified solo. With both players connected:
+
+1. Stand together. Expected: the crew panel shows the partner, as before - no regression.
+2. Separate to roughly 20 tiles apart, out of the old 12-tile radius.
+3. Press F9. Expected: the partner sees "Distress call: <direction>, <n> tiles!".
+4. Separate to over 30 tiles. Press F9.
+   Expected: "No crew partner in range." rather than silence.
+5. Load a singleplayer save and open the Crew Journal.
+   Expected: no Lua errors, and the panel still renders - this is the regression check for the
+   `getSpecificPlayer` branch.
+6. Check `~/Zomboid/Logs/` on both machines for errors mentioning `getOnlinePlayers`.
 
 ---
 
@@ -201,7 +506,7 @@ function IsoWindow:isGlassRemoved() end
 
 - [ ] **Step 4: Bump modversion in both files**
 
-Set `modversion=0.1.3` in both `mod.info` files, then confirm they are identical:
+Set `modversion=0.1.4` in both `mod.info` files, then confirm they are identical:
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && echo IDENTICAL
@@ -359,7 +664,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.4 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.5 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -815,7 +1120,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 9: Bump modversion to 0.1.5 in both files and commit**
+- [ ] **Step 9: Bump modversion to 0.1.6 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1138,7 +1443,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 8: Bump modversion to 0.1.6 in both files and commit**
+- [ ] **Step 8: Bump modversion to 0.1.7 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1238,7 +1543,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 5: Bump modversion to 0.1.7 in both files and commit**
+- [ ] **Step 5: Bump modversion to 0.1.8 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1456,7 +1761,7 @@ function SFeedingTroughSystem:getLuaObjectCount() end
 function SFeedingTroughSystem:getLuaObjectByIndex(index) end
 ```
 
-- [ ] **Step 7: Bump modversion to 0.1.8 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.9 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1651,7 +1956,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.9 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.10 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1828,7 +2133,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.10 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.11 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1933,7 +2238,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.11 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.12 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2090,7 +2395,7 @@ add the stub to `types/pz.lua` rather than silencing it:
 function ISScrollingListBox:setFont(font, padY) end
 ```
 
-- [ ] **Step 6: Bump modversion to 0.1.12 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.13 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2209,7 +2514,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.13 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.14 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2248,13 +2553,13 @@ cd "d:/Dropbox/Apps/Project Zomboid" && npx prettier --check "*.md" "docs/*.md" 
 
 Expected: `All matched files use Prettier code style!`
 
-- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.13**
+- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.14**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && grep modversion two-man-crew/Contents/mods/TwoManCrew/mod.info
 ```
 
-Expected: no diff output, then `modversion=0.1.13`.
+Expected: no diff output, then `modversion=0.1.14`.
 
 - [ ] **Step 3: Confirm no Claude attribution entered any commit**
 
