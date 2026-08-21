@@ -1,11 +1,21 @@
 # Restoration Visibility Implementation Plan
 
-> **STATUS: implemented on branch `restoration-visibility`, 2026-08-22.** All tasks are done;
-> shipped version is `0.1.7`, not the `0.1.16` this document's steps predicted - Task 0's three
-> commits and the batching of tasks 1-12 into one commit each consumed fewer slots than the
-> per-task ladder assumed. Every code-level gate passes: 29/29 parse, language server clean across
-> 31 files, prettier clean. **Nothing here has been loaded in Project Zomboid**, so every task's
-> in-game check remains open, and Task 0's check needs two connected players.
+> **STATUS: written, NOT TESTED. Branch `restoration-visibility`, 2026-08-22, version `0.1.7`.**
+>
+> **This code has never been executed.** Not once, not partially. No Project Zomboid session has
+> loaded it. Nothing below is known to work.
+>
+> What actually ran: `luaparse` (syntax only), `lua-language-server` (undefined names only),
+> `prettier` (markdown formatting), plus grep checks that identifiers match across files and
+> pen-and-paper arithmetic on the layout. None of that executes a line of the mod. It is
+> proofreading, not testing - it cannot catch a wrong method name, a nil at runtime, a wrong
+> event, or a UI that draws garbage.
+>
+> Every task's in-game check is OPEN. Task 0's needs two connected players. The first load in PZ
+> may simply fail, and `~/Zomboid/Logs/` is the only thing that will say so.
+>
+> The version note, for the record: `0.1.7` rather than the `0.1.16` this document's per-task
+> ladder predicted, because Task 0 took three commits and tasks 1-12 were batched into one.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
