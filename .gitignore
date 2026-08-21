@@ -7,3 +7,6 @@ Thumbs.db
 
 # local secrets
 .env.local
+
+# brainstorming visual-companion scratch (mockups + session state, local only)
+.superpowers/
