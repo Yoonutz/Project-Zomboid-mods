@@ -59,6 +59,42 @@ local MAX_UNITS_PER_BUILDING = 12
 local SEARCH_RADIUS = 90
 local SAMPLE_STEP = 10
 
+-- Returns a building's ground-plane footprint as x1, y1, x2, y2, derived from
+-- the min/max of its rooms' bounds.
+--
+-- BuildingDef itself exposes no bounds getter anywhere in the installed Lua
+-- source, but RoomDef does (getX/getX2/getY/getY2, used at
+-- client/ISUI/AdminPanel/LootZed/SpawnRateChecker.lua:55-56), and a building
+-- is the union of its rooms. All MetaGrid data, so this is readable for
+-- buildings nobody has ever loaded.
+--
+-- Returns nil when the def has no usable rooms, so callers must handle it.
+local function buildingBounds(def)
+	local rooms = def:getRooms()
+	if not rooms then return nil end
+
+	local count = rooms:size()
+	if count == 0 then return nil end
+
+	local x1, y1, x2, y2
+	for i = 0, count - 1 do
+		local room = rooms:get(i)
+		if room then
+			local rx1, rx2 = room:getX(), room:getX2()
+			local ry1, ry2 = room:getY(), room:getY2()
+			if rx1 and rx2 and ry1 and ry2 then
+				if not x1 or rx1 < x1 then x1 = rx1 end
+				if not y1 or ry1 < y1 then y1 = ry1 end
+				if not x2 or rx2 > x2 then x2 = rx2 end
+				if not y2 or ry2 > y2 then y2 = ry2 end
+			end
+		end
+	end
+
+	if not x1 then return nil end
+	return x1, y1, x2, y2
+end
+
 -- Scores one building by its room count and room sizes. Bigger rooms cost more
 -- to furnish, so a warehouse is not priced like a broom cupboard.
 --
@@ -116,11 +152,20 @@ local function surveyBuildings(centreX, centreY)
 				if id and not found[id] then
 					local units = scoreBuilding(def)
 					if units > 0 and units <= MAX_UNITS_PER_BUILDING then
+						local bx1, by1, bx2, by2 = buildingBounds(def)
 						found[id] = {
 							id = id,
 							units = units,
 							x = centreX + dx,
 							y = centreY + dy,
+							-- Footprint, for adjacency (tier 2). nil when the
+							-- def had no usable rooms; adjacency treats a nil
+							-- footprint as "cannot prove adjacency" rather
+							-- than guessing.
+							x1 = bx1,
+							y1 = by1,
+							x2 = bx2,
+							y2 = by2,
 						}
 						table.insert(order, found[id])
 					end

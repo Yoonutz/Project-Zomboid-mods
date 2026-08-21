@@ -27,6 +27,17 @@
 ---@class RoomDef
 ---@class Texture
 
+--- Server-side global object system for feeding troughs. Derives
+--- SGlobalObjectSystem (server/FeedingTrough/SFeedingTroughSystem.lua:5), so it
+--- exposes getLuaObjectCount()/getLuaObjectByIndex(i) from
+--- server/Map/SGlobalObjectSystem.lua:40-46. The `.instance` singleton is real
+--- and used by vanilla at server/FeedingTrough/BuildingObjects/ISFeedingTrough.lua:8.
+--- Declared `any` like every other engine class above: the mod calls it
+--- defensively behind a nil check and a pcall, so a typed surface would claim
+--- more than this stub can honestly verify.
+---@type any
+SFeedingTroughSystem = nil
+
 --- Engine globals ---------------------------------------------------------
 
 --- Returns the local player (client only). Nil before a game is loaded.

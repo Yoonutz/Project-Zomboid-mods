@@ -25,6 +25,13 @@
 --       nextLivestockStage = number, -- next unreached stage, nil if all 4 done
 --       nextLivestockStageName = string, -- nil if all 4 done
 --       livestockRemaining = string, -- one-line human description of what's left, or nil
+--       holdNightsDone / holdNightsNeeded   -- tier 5 hold countdown, nil until
+--                                            -- every building is restored
+--       herdNightsDone / herdNightsNeeded   -- L4 hold countdown, nil until a
+--                                            -- baby animal is present
+--       censusAnimals / censusBabies / censusHutches / censusTroughs
+--                                            -- what the last census actually
+--                                            -- saw, nil before it first runs
 --     }
 --
 -- ModData addition (under the existing TwoManCrew.Server.getState() table):
@@ -63,6 +70,23 @@
 --                                            IsoPlayer.getPlayers() is NOT used, it cannot
 --                                            see remote players)
 --   player:DistTo(x, y)                      client/Farming/CFarmingSystem.lua:47
+--   SFeedingTroughSystem.instance            server/FeedingTrough/BuildingObjects/ISFeedingTrough.lua:8
+--                                            (derives SGlobalObjectSystem -
+--                                            server/FeedingTrough/SFeedingTroughSystem.lua:5)
+--   system:getLuaObjectCount()               server/Map/SGlobalObjectSystem.lua:40-42
+--   system:getLuaObjectByIndex(i)            server/Map/SGlobalObjectSystem.lua:44-46
+--                                            (returns globalObject:getModData())
+--   luaObject.x / .y / .z on that ModData    server/Map/SGlobalObject.lua:75-77
+--                                            (SGlobalObject:new stamps them from
+--                                            globalObject:getX/getY/getZ; the same
+--                                            fields are read back at
+--                                            server/Map/SGlobalObjectSystem.lua:52)
+--   getCell():getGridSquare(x, y, z)         server/Animal/ISPickDungCursor.lua:104
+--   square:getMovingObjects()                server/BuildingObjects/ISHutch.lua:103
+--   square:getObjects()                      server/Map/MapObjects/MOHutch.lua:42
+--   instanceof(obj, "IsoHutch")              server/Map/MapObjects/MOHutch.lua:44
+--   hutch:getAnimalInside()                  client/ISUI/Hutch/ISHutchMenu.lua:57,
+--                                            client/ISUI/Animal/ISDesignationAnimalZoneUI.lua:286
 --
 -- UNVERIFIED, fallback used per GOALS.md's own stated fallback clause:
 -- no server-side precedent was found in the installed vanilla source for
@@ -75,11 +99,26 @@
 -- member at evaluation time - weaker than a true area census (an animal that
 -- wanders off between EveryTenMinutes passes can un-count itself), but still
 -- observed game state, not a self-report. This is exactly the fallback GOALS.md
--- names for L2/L4. L1 (pen) and L3 (hutch) do not need enumeration at all and
--- are NOT checked here for real: see the fallback note on BUILDING_TIERS below -
--- this module has no verified way to identify a specific placed object (fence/
--- trough/hutch) as "the crew's pen" either, so L1/L3 use the same crew-declared-
--- and-tallied fallback as the building tiers' restoration count.
+-- names for L2/L4.
+--
+-- L1 and L3 are now REAL checks, not tallies, but they are real in two
+-- different ways and the difference is load-bearing:
+--
+--   L1 (trough) reads SFeedingTroughSystem, a server-side global object system.
+--   Global object state is map-wide and persistent, so a trough is detectable
+--   anywhere on the claim whether or not the ground is loaded.
+--
+--   L3 (hutch) has no such system. The whole installed tree was searched and
+--   no hutch global object system exists - vanilla itself finds hutches by
+--   scanning squares (server/Map/MapObjects/MOHutch.lua:42-46). So a hutch is
+--   findable only on LOADED ground, which means L3 can only be confirmed while
+--   a crew member is near it. Do not "improve" this into a map-wide scan;
+--   there is no API for one.
+--
+-- Both checks locate structures by comparing their world position against the
+-- claim's bounding box, which is built from the per-building footprints
+-- recorded at claim time. A claim whose buildings carry no footprint cannot
+-- prove location, so those checks report "cannot tell" rather than "absent".
 
 require "TwoManCrew/TwoManCrew_Config"
 
@@ -90,13 +129,13 @@ TwoManCrew.Server = TwoManCrew.Server or {}
 local BUILDING_TIER_NAMES = {
 	[1] = "One House",
 	[2] = "The Row",
-	[3] = "The Square",
-	[4] = "The Walls",
+	[3] = "Half the Block",
+	[4] = "Every Door and Window",
 	[5] = "The Rebuilt Town",
 }
 
 local LIVESTOCK_STAGE_NAMES = {
-	[1] = "The Pen",
+	[1] = "The Trough",
 	[2] = "First Stock",
 	[3] = "The Hutch",
 	[4] = "The Herd",
@@ -130,28 +169,149 @@ local function ensureTierSchema(state)
 end
 
 -- ---------------------------------------------------------------------------
+-- Claim geography
+-- ---------------------------------------------------------------------------
+
+-- Bounding box of the whole claim, from the per-building footprints recorded
+-- at claim time (TwoManCrew_Campaign.lua). Used to ask "is this structure on
+-- our block?" without needing the ground loaded.
+--
+-- Returns nil when no claim exists or no building carries a footprint - which
+-- is the case for claims made before footprints were recorded. Callers must
+-- treat nil as "cannot judge location" rather than as "not on the block".
+local function claimBounds(claim)
+	if not claim or not claim.buildings then return nil end
+
+	local x1, y1, x2, y2
+	for _, entry in ipairs(claim.buildings) do
+		if entry.x1 and entry.y1 and entry.x2 and entry.y2 then
+			if not x1 or entry.x1 < x1 then x1 = entry.x1 end
+			if not y1 or entry.y1 < y1 then y1 = entry.y1 end
+			if not x2 or entry.x2 > x2 then x2 = entry.x2 end
+			if not y2 or entry.y2 > y2 then y2 = entry.y2 end
+		end
+	end
+
+	if not x1 then return nil end
+
+	-- Pens and hutches sit beside the buildings, not inside them, so the claim
+	-- box is widened before asking whether a structure belongs to this crew.
+	local margin = 20
+	return x1 - margin, y1 - margin, x2 + margin, y2 + margin
+end
+
+-- Counts feeding troughs standing on (or just beside) the claimed block.
+--
+-- Reads SFeedingTroughSystem, a server-side global object system
+-- (server/FeedingTrough/SFeedingTroughSystem.lua:5 derives SGlobalObjectSystem;
+-- the singleton is used at
+-- server/FeedingTrough/BuildingObjects/ISFeedingTrough.lua:8), enumerated via
+-- getLuaObjectCount/getLuaObjectByIndex (server/Map/SGlobalObjectSystem.lua:40-46).
+-- Global object state is map-wide and persistent, so unlike a square scan this
+-- sees troughs nobody is standing near.
+--
+-- getLuaObjectByIndex returns globalObject:getModData()
+-- (server/Map/SGlobalObjectSystem.lua:45), and SGlobalObject:new stamps x/y/z
+-- onto that very table from globalObject:getX/getY/getZ
+-- (server/Map/SGlobalObject.lua:75-77). Vanilla reads the same fields back at
+-- server/Map/SGlobalObjectSystem.lua:52, so obj.x / obj.y are the verified
+-- field names, not an assumption.
+--
+-- Returns nil when the system is unavailable or the claim has no footprints,
+-- so the caller can tell "none built" from "cannot tell".
+local function countTroughsOnClaim(claim)
+	if not SFeedingTroughSystem or not SFeedingTroughSystem.instance then
+		return nil
+	end
+
+	local x1, y1, x2, y2 = claimBounds(claim)
+	if not x1 then return nil end
+
+	local system = SFeedingTroughSystem.instance
+	local ok, count = pcall(function()
+		local total = 0
+		for i = 1, system:getLuaObjectCount() do
+			local obj = system:getLuaObjectByIndex(i)
+			if obj and obj.x and obj.y then
+				if obj.x >= x1 and obj.x <= x2 and obj.y >= y1 and obj.y <= y2 then
+					total = total + 1
+				end
+			end
+		end
+		return total
+	end)
+
+	if not ok then return nil end
+	return count
+end
+
+-- ---------------------------------------------------------------------------
 -- Livestock counting (fallback: proximity census, see file header)
 -- ---------------------------------------------------------------------------
 
--- Counts living (and separately, baby) IsoAnimal instances within crew radius
--- of any online crew member. Fallback census per GOALS.md's own stated
--- fallback clause - see file header for why no true area enumeration is used.
+-- Counts living animals, babies, and occupied hutches near online crew.
+--
+-- Two separate engine limits are at work here, and both are deliberate:
+--
+--   Animals: IsoAnimal instances live on IsoGridSquare, so only loaded ground
+--   can be counted. This is the fallback census GOALS.md allows.
+--
+--   Hutches: IsoHutch has NO global object system - unlike IsoFeedingTrough,
+--   which does (SFeedingTroughSystem). The whole installed source was searched
+--   and no hutch system exists; vanilla itself finds hutches by scanning
+--   squares (server/Map/MapObjects/MOHutch.lua:42-46). So a hutch is findable
+--   only on a loaded square. Do not "improve" this into a map-wide scan; there
+--   is no API for one. L3 is therefore confirmable only while a crew member is
+--   near it.
+--
+-- This sweeps the squares AROUND each player rather than only the exact square
+-- the player stands on. The original read player:getSquare() alone, which meant
+-- an animal one tile away was invisible.
+--
+-- Performance: (2*radius+1)^2 squares per player - 625 each at CREW_RADIUS 12.
+-- It runs on the ten-minute tier tick only. Do not call it per frame.
+--
+-- Returns total, babies, occupiedHutches.
 local function censusNearbyAnimals()
+	local cell = getCell()
 	local seen = {}
-	local total, babies = 0, 0
+	local seenHutch = {}
+	local total, babies, occupiedHutches = 0, 0, 0
+
+	local radius = TwoManCrew.CREW_RADIUS
 
 	for _, player in ipairs(TwoManCrew.getAllPlayers()) do
-		local square = player:getSquare()
-		if square then
-			local objects = square:getMovingObjects()
-			if objects then
-				for j = 0, objects:size() - 1 do
-					local obj = objects:get(j)
-					if obj and instanceof(obj, "IsoAnimal") and not seen[obj] then
-						seen[obj] = true
-						total = total + 1
-						if obj:isBaby() then
-							babies = babies + 1
+		local px, py = player:getX(), player:getY()
+		local pz = player:getZ() or 0
+		for dx = -radius, radius do
+			for dy = -radius, radius do
+				local square = cell and cell:getGridSquare(px + dx, py + dy, pz)
+				if square then
+					local movers = square:getMovingObjects()
+					if movers then
+						for j = 0, movers:size() - 1 do
+							local obj = movers:get(j)
+							if obj and instanceof(obj, "IsoAnimal") and not seen[obj] then
+								seen[obj] = true
+								total = total + 1
+								if obj:isBaby() then
+									babies = babies + 1
+								end
+							end
+						end
+					end
+
+					local objects = square:getObjects()
+					if objects then
+						for j = 0, objects:size() - 1 do
+							local obj = objects:get(j)
+							if obj and instanceof(obj, "IsoHutch") and not seenHutch[obj] then
+								seenHutch[obj] = true
+								local inside = obj:getAnimalInside()
+								if inside and inside:size() > 0 then
+									occupiedHutches = occupiedHutches + 1
+								end
+							end
 						end
 					end
 				end
@@ -159,7 +319,7 @@ local function censusNearbyAnimals()
 		end
 	end
 
-	return total, babies
+	return total, babies, occupiedHutches
 end
 
 -- ---------------------------------------------------------------------------
@@ -187,14 +347,75 @@ local function getRestoredCount()
 	return count
 end
 
+-- Two buildings are adjacent when their footprints touch or overlap once each
+-- is expanded by ADJACENCY_GAP tiles. A street-facing row has gaps of a few
+-- tiles between structures, so exact edge contact would almost never fire.
+local ADJACENCY_GAP = 3
+
+-- Footprints are recorded at claim time (TwoManCrew_Campaign.lua). Claims made
+-- before that existed have no bounds; those buildings simply cannot prove
+-- adjacency, which keeps tier 2 honest rather than guessing from centre points.
+local function isAdjacent(a, b)
+	if not a or not b then return false end
+	if not a.x1 or not b.x1 then return false end
+
+	local ax1, ay1 = a.x1 - ADJACENCY_GAP, a.y1 - ADJACENCY_GAP
+	local ax2, ay2 = a.x2 + ADJACENCY_GAP, a.y2 + ADJACENCY_GAP
+
+	return ax1 <= b.x2 and ax2 >= b.x1 and ay1 <= b.y2 and ay2 >= b.y1
+end
+
+-- Largest group of mutually-reachable restored buildings, where "reachable"
+-- means linked by a chain of adjacent neighbours. A row of three houses in a
+-- line counts even though the end houses do not touch each other.
+--
+-- Plain flood fill over the restored set. Claims are dozens of buildings at
+-- most, so the O(n^2) neighbour scan is not worth optimising.
+local function largestAdjacentGroup(claim)
+	if not claim or not claim.buildings then return 0 end
+	claim.restored = claim.restored or {}
+
+	local restored = {}
+	for _, entry in ipairs(claim.buildings) do
+		if claim.restored[entry.id] then
+			table.insert(restored, entry)
+		end
+	end
+	if #restored == 0 then return 0 end
+
+	local seen = {}
+	local best = 0
+
+	for i = 1, #restored do
+		if not seen[i] then
+			local stack = { i }
+			seen[i] = true
+			local size = 0
+
+			while #stack > 0 do
+				local current = table.remove(stack)
+				size = size + 1
+				for j = 1, #restored do
+					if not seen[j] and isAdjacent(restored[current], restored[j]) then
+						seen[j] = true
+						table.insert(stack, j)
+					end
+				end
+			end
+
+			if size > best then best = size end
+		end
+	end
+
+	return best
+end
+
 -- Tier conditions. Each returns true/false given the claim and the restored
--- count. Buildings adjacency (tier 2's "three ADJACENT") and public-building
--- identification (tier 3) have no verified per-building metadata check in
--- this codebase, so both fall back to a simple count against the claim's
--- building list - the same crew-declared-claim fallback GOALS.md names for
--- the enumeration gaps. Tiers 1, 2 (as "any 3 restored"), and 5 (all
--- restored + hold) are real counts against verified state; 3 and 4 are
--- explicitly the fallback.
+-- count. Tier 2 is a genuine adjacency test over the footprints recorded at
+-- claim time. Tiers 3 and 4 were renamed rather than faked: identifying "the
+-- large public building" needs a building category the MetaGrid does not
+-- expose, and there is no block-boundary perimeter sweep in the engine's Lua
+-- API, so both now ask for something this module can actually verify.
 local function evaluateBuildingTier(tier, claim, restoredCount, tiersState)
 	if not claim or not claim.buildings then return false end
 	local totalBuildings = #claim.buildings
@@ -203,23 +424,25 @@ local function evaluateBuildingTier(tier, claim, restoredCount, tiersState)
 		-- Real check: at least one building restored.
 		return restoredCount >= 1
 	elseif tier == 2 then
-		-- Fallback: "three adjacent" cannot be verified without a building
-		-- adjacency API, so this counts any three restored buildings on the
-		-- claimed block instead - weaker, but still an observed count.
-		return restoredCount >= 3
+		-- Real check: three restored buildings that form a connected run,
+		-- using footprints captured at claim time. Previously this counted
+		-- any three restored buildings anywhere on the block, which made
+		-- "The Row" a lie.
+		return largestAdjacentGroup(claim) >= 3
 	elseif tier == 3 then
-		-- Fallback: no verified way to flag a specific building as "the
-		-- large public one" from this codebase's confirmed API list, so this
-		-- treats it as satisfied once every claimed building is restored
-		-- except tier 5's hold requirement - i.e. folded into full
-		-- restoration rather than singled out. Reported to the player as a
-		-- fallback in the module's doc comment; not a real per-building check.
-		return totalBuildings > 0 and restoredCount >= totalBuildings
+		-- Renamed to "Half the Block": this tests what it can actually
+		-- verify. Identifying "the large public building" needs a building
+		-- category the MetaGrid does not expose, so rather than keep a goal
+		-- that silently meant something else, the tier now honestly asks for
+		-- half the claim restored.
+		local half = math.ceil(totalBuildings / 2)
+		return totalBuildings > 0 and restoredCount >= half
 	elseif tier == 4 then
-		-- Fallback: "perimeter sealed" has no verified block-boundary
-		-- barricade sweep in this codebase (object:getBarricadeOnSameSquare()
-		-- checks one object at a time, not a perimeter). Uses the same
-		-- full-restoration proxy as tier 3.
+		-- Renamed to "Every Door and Window": all buildings restored, which
+		-- by definition means every ground-floor window is boarded or
+		-- replaced and every doorway has a door. That is as close to "the
+		-- perimeter is sealed" as this codebase can verify - there is no
+		-- block-boundary sweep in the engine's Lua API.
 		return totalBuildings > 0 and restoredCount >= totalBuildings
 	elseif tier == 5 then
 		if totalBuildings == 0 or restoredCount < totalBuildings then
@@ -244,27 +467,43 @@ local function evaluateBuildingTier(tier, claim, restoredCount, tiersState)
 	return false
 end
 
-local function evaluateLivestockStage(stage, tiersState, animalTotal, animalBabies)
+local function evaluateLivestockStage(stage, tiersState, animalTotal, animalBabies, claim, occupiedHutches)
 	if stage == 1 then
-		-- Fallback: no verified way to identify a placed fence+trough
-		-- combo as "the crew's pen" specifically (structures are anonymous
-		-- IsoObjects once built). Uses the pensBuilt tally if some other
-		-- feature ever populates it, else falls back to "at least one
-		-- animal is present", since a pen is a precondition for keeping one.
+		-- Real check: a feeding trough standing on the claimed block, read
+		-- from the server-side global object system so it works whether or
+		-- not anyone is nearby.
+		--
+		-- Deliberately does NOT verify the enclosure is fenced - no verified
+		-- enclosure test exists in the engine's Lua surface. The stage
+		-- description says so rather than implying more than is checked.
+		local troughs = countTroughsOnClaim(claim)
+		if troughs ~= nil then
+			return troughs >= 1
+		end
+
+		-- Could not read the trough system, or the claim predates footprints.
+		-- Fall back to the old tally rather than failing outright. Note the
+		-- deliberate absence of "return animalTotal >= 1": reaching this stage
+		-- by standing near a wild animal was the bug being fixed.
 		local tally = TwoManCrew.Server.getTally and TwoManCrew.Server.getTally()
 		if tally and tally.pensBuilt and tally.pensBuilt > 0 then return true end
-		return animalTotal >= 1
+		return false
 	elseif stage == 2 then
 		-- Real-ish check (fallback census, see file header): at least one
 		-- living animal currently seen near the crew.
 		return animalTotal >= 1
 	elseif stage == 3 then
-		-- Fallback: same anonymous-structure gap as L1. Uses the
-		-- hutchesBuilt tally if populated, else requires at least 2 animals
-		-- present as a weak proxy for "hutch is stocked".
+		-- Real check: a hutch with at least one animal inside it. Only
+		-- confirmable while a crew member is near the hutch - IsoHutch has no
+		-- global object system, so it cannot be found on unloaded ground.
+		if occupiedHutches and occupiedHutches >= 1 then return true end
+
+		-- Fallback only if some other feature ever populates the tally. The
+		-- old "two animals nearby" proxy is deliberately gone: two wild
+		-- rabbits used to reach this stage.
 		local tally = TwoManCrew.Server.getTally and TwoManCrew.Server.getTally()
 		if tally and tally.hutchesBuilt and tally.hutchesBuilt > 0 then return true end
-		return animalTotal >= 2
+		return false
 	elseif stage == 4 then
 		-- Real check within the stated fallback: a baby animal currently
 		-- seen near the crew is direct evidence of breeding (isBaby(),
@@ -334,11 +573,21 @@ local function evaluateTiers()
 	local livestockRemaining = not (tiersState.livestock[1] and tiersState.livestock[2]
 		and tiersState.livestock[3] and tiersState.livestock[4])
 	if livestockRemaining then
-		local animalTotal, animalBabies = censusNearbyAnimals()
+		local animalTotal, animalBabies, occupiedHutches = censusNearbyAnimals()
+
+		-- Stash what the census actually saw, so getTierProgress can report it.
+		-- Without this the crew sees a stage marked incomplete with no way to
+		-- tell whether the game saw zero animals or simply could not look.
+		tiersState.lastCensus = {
+			animals = animalTotal,
+			babies = animalBabies,
+			occupiedHutches = occupiedHutches,
+			troughs = countTroughsOnClaim(claim),
+		}
 
 		for stage = 1, 4 do
 			if not tiersState.livestock[stage] then
-				if evaluateLivestockStage(stage, tiersState, animalTotal, animalBabies) then
+				if evaluateLivestockStage(stage, tiersState, animalTotal, animalBabies, claim, occupiedHutches) then
 					tiersState.livestock[stage] = true
 					announceTier(
 						"Livestock stage reached: " .. LIVESTOCK_STAGE_NAMES[stage],
@@ -347,6 +596,11 @@ local function evaluateTiers()
 				end
 			end
 		end
+	else
+		-- Every stage is done, so the census no longer runs. Clear the cached
+		-- figures rather than leaving the crew staring at a count frozen at
+		-- the moment L4 completed.
+		tiersState.lastCensus = nil
 	end
 end
 
@@ -364,17 +618,17 @@ end
 
 local BUILDING_REMAINING_TEXT = {
 	[1] = "restore one building fully",
-	[2] = "restore three buildings on the block",
-	[3] = "restore every claimed building (public building check falls back to full restoration)",
-	[4] = "restore every claimed building (perimeter check falls back to full restoration)",
+	[2] = "restore three buildings that sit next to each other",
+	[3] = "restore half the buildings on the claimed block",
+	[4] = "restore every claimed building",
 	[5] = "restore every claimed building and hold the block " .. TIER5_HOLD_NIGHTS .. " nights",
 }
 
 local LIVESTOCK_REMAINING_TEXT = {
-	[1] = "keep an animal near the claimed block (pen check falls back to animal presence)",
-	[2] = "keep at least one living animal near the claimed block",
-	[3] = "keep animals stocked (hutch check falls back to animal count)",
-	[4] = "raise a baby animal near the block for " .. L4_HERD_HOLD_NIGHTS .. " nights",
+	[1] = "build a feeding trough on the claimed block",
+	[2] = "keep at least one living animal near the crew",
+	[3] = "build a hutch and put an animal in it, then stand near it",
+	[4] = "keep a young animal alive near the crew for " .. L4_HERD_HOLD_NIGHTS .. " nights",
 }
 
 -- Returns the crew's tier progress. Shape (all fields always present, nil
@@ -385,11 +639,20 @@ local LIVESTOCK_REMAINING_TEXT = {
 --     nextBuildingTier       = number|nil,  -- nil once all 5 are reached
 --     nextBuildingTierName   = string|nil,
 --     buildingRemaining      = string|nil,  -- one-line description, nil once done
+--     holdNightsDone         = number|nil,  -- tier 5 hold progress, nil until
+--     holdNightsNeeded       = number|nil,  --   every building is restored
 --     livestockStage         = number,  -- highest reached, 0 if none
 --     livestockStageName     = string,  -- "None" if livestockStage is 0
 --     nextLivestockStage     = number|nil,
 --     nextLivestockStageName = string|nil,
 --     livestockRemaining     = string|nil,
+--     herdNightsDone         = number|nil,  -- L4 hold progress, nil until a
+--     herdNightsNeeded       = number|nil,  --   baby animal is present
+--     censusAnimals          = number|nil,  -- what the last census saw; nil
+--     censusBabies           = number|nil,  --   before the first census runs
+--     censusHutches          = number|nil,  -- occupied hutches seen
+--     censusTroughs          = number|nil,  -- troughs on the claim, nil if
+--                                           --   the trough system was unreadable
 --   }
 -- Safe to call with no claim assigned yet: everything reads as 0/"None"/nil.
 function TwoManCrew.Server.getTierProgress()
@@ -402,18 +665,52 @@ function TwoManCrew.Server.getTierProgress()
 	local livestockStage = highestReached(tiersState.livestock, 4)
 	local nextLivestockStage = livestockStage < 4 and (livestockStage + 1) or nil
 
+	-- Tier 5's hold stretch, surfaced so the crew can see it counting down
+	-- rather than waiting blind. nil until every building is restored, which
+	-- is when allRestoredSinceHours is first stamped.
+	local holdNightsDone, holdNightsNeeded
+	if tiersState.allRestoredSinceHours then
+		local elapsed = getGameTime():getWorldAgeHours() - tiersState.allRestoredSinceHours
+		holdNightsDone = math.floor(elapsed / 24)
+		holdNightsNeeded = TIER5_HOLD_NIGHTS
+		if holdNightsDone > holdNightsNeeded then
+			holdNightsDone = holdNightsNeeded
+		end
+	end
+
+	-- L4's herd hold stretch, surfaced like tier 5's.
+	local herdNightsDone, herdNightsNeeded
+	if tiersState.herdSinceHours then
+		local elapsed = getGameTime():getWorldAgeHours() - tiersState.herdSinceHours
+		herdNightsDone = math.floor(elapsed / 24)
+		herdNightsNeeded = L4_HERD_HOLD_NIGHTS
+		if herdNightsDone > herdNightsNeeded then
+			herdNightsDone = herdNightsNeeded
+		end
+	end
+
+	local census = tiersState.lastCensus
+
 	return {
 		buildingTier = buildingTier,
 		buildingTierName = BUILDING_TIER_NAMES[buildingTier] or "None",
 		nextBuildingTier = nextBuildingTier,
 		nextBuildingTierName = nextBuildingTier and BUILDING_TIER_NAMES[nextBuildingTier] or nil,
 		buildingRemaining = nextBuildingTier and BUILDING_REMAINING_TEXT[nextBuildingTier] or nil,
+		holdNightsDone = holdNightsDone,
+		holdNightsNeeded = holdNightsNeeded,
 
 		livestockStage = livestockStage,
 		livestockStageName = LIVESTOCK_STAGE_NAMES[livestockStage] or "None",
 		nextLivestockStage = nextLivestockStage,
 		nextLivestockStageName = nextLivestockStage and LIVESTOCK_STAGE_NAMES[nextLivestockStage] or nil,
 		livestockRemaining = nextLivestockStage and LIVESTOCK_REMAINING_TEXT[nextLivestockStage] or nil,
+		herdNightsDone = herdNightsDone,
+		herdNightsNeeded = herdNightsNeeded,
+		censusAnimals = census and census.animals,
+		censusBabies = census and census.babies,
+		censusHutches = census and census.occupiedHutches,
+		censusTroughs = census and census.troughs,
 	}
 end
 

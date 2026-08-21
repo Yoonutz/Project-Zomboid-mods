@@ -8,10 +8,12 @@
 -- top as the standing objective.
 --
 -- Also holds the Campaign view: the five building tiers and four livestock
--- stages from GOALS.md, showing what is done and what remains. A single
--- "View: Journal / Campaign" toggle button switches between the two, rather
--- than a second ISTabPanel - see the toggle-vs-tabs note below the button
--- definitions for why.
+-- stages from GOALS.md, showing what is done and what remains, plus the
+-- Buildings view: one line per claimed building with the reason it is not
+-- yet banked. A single view button cycles Journal -> Campaign -> Buildings,
+-- rather than an ISTabPanel - see the toggle-vs-tabs note below the button
+-- definitions for why. The button's label names the view the NEXT press
+-- switches to, so it reads as an instruction rather than a state.
 --
 -- Verified APIs (installed Build 42.20.3):
 --   ISCollapsableWindow:derive   client/Camping/ISUI/ISCampingInfoWindow.lua:4
@@ -57,13 +59,13 @@ local BUTTON_W = 90
 local BUILDING_TIERS = {
 	{ key = "tier1", label = "One House" },
 	{ key = "tier2", label = "The Row" },
-	{ key = "tier3", label = "The Square" },
-	{ key = "tier4", label = "The Walls" },
+	{ key = "tier3", label = "Half the Block" },
+	{ key = "tier4", label = "Every Door and Window" },
 	{ key = "tier5", label = "The Rebuilt Town" },
 }
 
 local LIVESTOCK_STAGES = {
-	{ key = "L1", label = "The Pen" },
+	{ key = "L1", label = "The Trough" },
 	{ key = "L2", label = "First Stock" },
 	{ key = "L3", label = "The Hutch" },
 	{ key = "L4", label = "The Herd" },
@@ -76,9 +78,9 @@ function TwoManCrewJournalWindow:createChildren()
 
 	self.claimLabel = nil
 
-	-- "journal" or "campaign" - which view the content area currently
-	-- renders. Toggled by viewButton; see the tabs-vs-toggle note at the top
-	-- of this file for why this is a button rather than an ISTabPanel.
+	-- "journal", "campaign" or "buildings" - which view the content area
+	-- currently renders. Cycled by viewButton; see the tabs-vs-toggle note at
+	-- the top of this file for why this is a button rather than an ISTabPanel.
 	self.activeView = "journal"
 
 	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, ROW)
@@ -103,6 +105,8 @@ function TwoManCrewJournalWindow:createChildren()
 	self.claimButton:initialise()
 	self:addChild(self.claimButton)
 
+	-- Label names the view the next press switches to. Starting view is
+	-- "journal", so the first press goes to Campaign.
 	self.viewButton = ISButton:new(
 		PAD, 0, BUTTON_W, ROW,
 		"View: Campaign", self, TwoManCrewJournalWindow.onToggleView
@@ -205,6 +209,9 @@ function TwoManCrewJournalWindow:onRefresh()
 	if TwoManCrew.Client and TwoManCrew.Client.requestTierProgress then
 		TwoManCrew.Client.requestTierProgress(getPlayer())
 	end
+	if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+		TwoManCrew.Client.requestClaimDetail(getPlayer())
+	end
 end
 
 -- Asks the server to rescan the claim now rather than waiting for the timer.
@@ -227,20 +234,37 @@ function TwoManCrewJournalWindow:onClaim()
 	end
 end
 
--- Flips between the Journal and Campaign views. A button, not a keybind -
--- everything in this window is click-driven.
-function TwoManCrewJournalWindow:onToggleView()
-	if self.activeView == "journal" then
-		self.activeView = "campaign"
-		self.viewButton:setTitle("View: Journal")
-	else
-		self.activeView = "journal"
-		self.viewButton:setTitle("View: Campaign")
+-- Cycles Journal -> Campaign -> Buildings -> Journal. The button label names
+-- the view the NEXT press will switch to.
+local VIEW_ORDER = { "journal", "campaign", "buildings" }
+local VIEW_LABEL = {
+	journal = "View: Journal",
+	campaign = "View: Campaign",
+	buildings = "View: Buildings",
+}
+
+local function nextView(current)
+	for i, name in ipairs(VIEW_ORDER) do
+		if name == current then
+			return VIEW_ORDER[(i % #VIEW_ORDER) + 1]
+		end
 	end
-	-- Force a repopulate even though the underlying report tables did not
-	-- change - only which one is displayed did.
+	return VIEW_ORDER[1]
+end
+
+function TwoManCrewJournalWindow:onToggleView()
+	self.activeView = nextView(self.activeView)
+	self.viewButton:setTitle(VIEW_LABEL[nextView(self.activeView)])
+
+	if self.activeView == "buildings" then
+		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+			TwoManCrew.Client.requestClaimDetail(getPlayer())
+		end
+	end
+
 	self.lastSeenReport = nil
 	self.lastSeenTierProgress = nil
+	self.lastSeenClaimDetail = nil
 end
 
 -- Rebuilds the list from the last server reply. Newest first, because the last
@@ -356,6 +380,57 @@ function TwoManCrewJournalWindow:populateCampaign()
 		self.list:addItem(string.format("[%s] %s: %s", mark, stage.key, stage.label), stage)
 	end
 
+	-- What the last census actually saw. Without this a stage reads as
+	-- incomplete with no way to tell "saw zero animals" from "could not look".
+	if type(progress.censusAnimals) == "number" then
+		local line = string.format(
+			"Last count: %d animals (%d young)",
+			progress.censusAnimals, progress.censusBabies or 0
+		)
+		self.list:addItem(line, nil)
+	end
+
+	if type(progress.censusTroughs) == "number" then
+		self.list:addItem(
+			string.format("Feeding troughs on the block: %d", progress.censusTroughs),
+			nil
+		)
+	elseif progress.censusAnimals ~= nil then
+		self.list:addItem("Feeding troughs: could not read", nil)
+	end
+
+	if type(progress.censusHutches) == "number" then
+		self.list:addItem(
+			string.format("Occupied hutches seen: %d", progress.censusHutches),
+			nil
+		)
+	end
+
+	if type(progress.herdNightsDone) == "number"
+		and type(progress.herdNightsNeeded) == "number"
+	then
+		self.list:addItem(
+			string.format(
+				"Herd held: %d of %d nights",
+				progress.herdNightsDone, progress.herdNightsNeeded
+			),
+			nil
+		)
+	end
+
+	-- Tier 5's hold countdown. Only present once every building is restored.
+	if type(progress.holdNightsDone) == "number"
+		and type(progress.holdNightsNeeded) == "number"
+	then
+		self.list:addItem(
+			string.format(
+				"Holding the block: %d of %d nights",
+				progress.holdNightsDone, progress.holdNightsNeeded
+			),
+			nil
+		)
+	end
+
 	-- What is left to do next, per track. TwoManCrew_Tiers.lua sends these as
 	-- buildingRemaining and livestockRemaining; the generic names below were
 	-- guessed before that module existed and never matched, so the hint never
@@ -373,9 +448,95 @@ function TwoManCrewJournalWindow:populateCampaign()
 	end
 end
 
+-- Turns one detail row into a single human line explaining its status.
+-- Returns nil when there is nothing useful to add (an already-banked
+-- building needs no explanation).
+function TwoManCrewJournalWindow.describeRow(row)
+	if row.status == "restored" then
+		return nil
+	end
+
+	-- An explicit server-supplied reason always wins - it is more specific
+	-- than anything reconstructed from the flags.
+	if row.reason then
+		return row.reason
+	end
+
+	if row.status == "unknown" then
+		if row.roomsSeen and row.roomsTotal and row.roomsSeen < row.roomsTotal then
+			return string.format(
+				"can't see it all (%d of %d rooms loaded) - walk closer",
+				row.roomsSeen, row.roomsTotal
+			)
+		end
+		return "not checkable right now - walk closer and check again"
+	end
+
+	local todo = {}
+	if row.windowsOk == false then table.insert(todo, "windows") end
+	if row.doorsOk == false then table.insert(todo, "doors") end
+	if row.noCorpses == false then table.insert(todo, "corpses") end
+	if row.crewPresent == false then table.insert(todo, "nobody here") end
+
+	if #todo == 0 then
+		return "blocked, but no condition reported - check the logs"
+	end
+	return "needs: " .. table.concat(todo, ", ")
+end
+
+-- Renders one line per claimed building plus an indented reason line, so the
+-- crew can see which building is blocked and on what.
+--
+-- Three statuses, deliberately distinct: DONE (banked), WORK (a real condition
+-- failed) and ?? (not checkable right now - usually the ground is not loaded
+-- because nobody is near it). Collapsing "unknown" into "not restored" was the
+-- original defect; a crew could not tell a broken window from a far-away
+-- building.
+function TwoManCrewJournalWindow:populateBuildings()
+	local detail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+	local received = TwoManCrew.Client and TwoManCrew.Client.claimDetailReceived
+	self.list:clear()
+
+	if not received then
+		self.list:addItem("Asking the server...", nil)
+		return
+	end
+	if not detail or #detail == 0 then
+		self.list:addItem("No claim yet - press Claim a block.", nil)
+		return
+	end
+
+	local done = 0
+	for _, row in ipairs(detail) do
+		if row.status == "restored" then done = done + 1 end
+	end
+	self.list:addItem(string.format("-- %d of %d restored --", done, #detail), nil)
+
+	for i, row in ipairs(detail) do
+		local mark = "??"
+		if row.status == "restored" then
+			mark = "DONE"
+		elseif row.status == "not_restored" then
+			mark = "WORK"
+		end
+
+		self.list:addItem(
+			string.format("[%s] Building %d  (%s work units)", mark, i, tostring(row.units)),
+			row
+		)
+
+		local reason = TwoManCrewJournalWindow.describeRow(row)
+		if reason then
+			self.list:addItem("      " .. reason, row)
+		end
+	end
+end
+
 function TwoManCrewJournalWindow:populate()
 	if self.activeView == "campaign" then
 		self:populateCampaign()
+	elseif self.activeView == "buildings" then
+		self:populateBuildings()
 	else
 		self:populateJournal()
 	end
@@ -403,9 +564,14 @@ function TwoManCrewJournalWindow:prerender()
 	-- every frame.
 	local report = TwoManCrew.Client and TwoManCrew.Client.lastReport
 	local tierProgress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
-	if report ~= self.lastSeenReport or tierProgress ~= self.lastSeenTierProgress then
+	local claimDetail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+	if report ~= self.lastSeenReport
+		or tierProgress ~= self.lastSeenTierProgress
+		or claimDetail ~= self.lastSeenClaimDetail
+	then
 		self.lastSeenReport = report
 		self.lastSeenTierProgress = tierProgress
+		self.lastSeenClaimDetail = claimDetail
 		self:populate()
 	end
 

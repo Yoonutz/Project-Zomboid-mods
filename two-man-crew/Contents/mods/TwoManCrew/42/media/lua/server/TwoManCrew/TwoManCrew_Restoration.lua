@@ -1,10 +1,10 @@
 -- TwoManCrew_Restoration.lua (server)
 --
--- Decides whether a claimed building counts as "restored", per the four
--- conditions in GOALS.md: ground-floor windows boarded/replaced, every
--- doorway has a working door, each room holds crew-built furniture, no
--- corpse remains. See the per-condition notes below for which of these are
--- real game-state checks and which fall back to a crew-declared claim.
+-- Decides whether a claimed building counts as "restored": ground-floor
+-- windows boarded/replaced, every doorway has a working door, no corpse
+-- remains, and a crew member present to witness it. The GOALS.md "crew-built
+-- furniture per room" condition was dropped as unimplementable - see the
+-- CREW PRESENCE block below for why, and for what replaced it.
 --
 -- CHUNK-LOADING CONSTRAINT (same one TwoManCrew_Campaign.lua documents at
 -- its header): a dedicated server only simulates IsoGridSquares near online
@@ -69,18 +69,22 @@ local function isLoaded(square)
 end
 
 -- REAL CHECK: ground-floor window state.
--- IsoWindow: an intact window pane, possibly barricaded. isBarricaded()
--- (shared/Moveables/ISMoveableSpriteProps.lua:882) is the only verified
--- state check found for a window - no isBroken()/isDestroyed() was found on
--- IsoWindow in the searched source, so an un-barricaded IsoWindow is treated
--- as already fine (an intact pane, boarding optional) rather than guessed at
--- as broken glass. This is intentionally conservative: it can under-detect
--- a broken-but-not-yet-boarded window, never over-fail one.
--- IsoWindowFrame: the pane is gone outright, leaving a frame.
--- hasWindow() (client/DebugUIs/DebugContextMenu.lua:381) tells us whether a
--- replacement pane exists; if not, isBarricaded() still covers a boarded-over
--- frame as an acceptable restoration per GOALS.md ("boarded or replaced").
--- A frame with neither counts as an unrestored window and fails the square.
+--
+-- Two distinct objects represent a window, and BOTH must be checked - the
+-- original version of this function only looked at IsoWindowFrame, so a
+-- smashed-but-still-present pane passed silently and a crew could leave every
+-- window on the ground floor broken with the building still counting.
+--
+-- IsoWindow: the pane is still there. It may be intact, smashed
+-- (isSmashed(), client/ISUI/ISButtonPrompt.lua:822) or have had its glass
+-- removed deliberately (isGlassRemoved(),
+-- client/DebugUIs/DebugContextMenu.lua:865). GOALS.md accepts a window that is
+-- "boarded or replaced", so a broken pane passes only when barricaded
+-- (isBarricaded(), shared/Moveables/ISMoveableSpriteProps.lua:882).
+--
+-- IsoWindowFrame: the pane is gone outright, leaving a frame. hasWindow()
+-- (client/DebugUIs/DebugContextMenu.lua:381) reports whether a replacement
+-- pane was fitted; a boarded-over empty frame is also acceptable.
 local function squareWindowsRestored(square)
 	local objects = square:getObjects()
 	for i = 0, objects:size() - 1 do
@@ -88,6 +92,11 @@ local function squareWindowsRestored(square)
 		if obj then
 			if instanceof(obj, "IsoWindowFrame") then
 				if not obj:hasWindow() and not obj:isBarricaded() then
+					return false
+				end
+			elseif instanceof(obj, "IsoWindow") then
+				local broken = obj:isSmashed() or obj:isGlassRemoved()
+				if broken and not obj:isBarricaded() then
 					return false
 				end
 			end
@@ -148,18 +157,18 @@ local function squareHasCorpse(square)
 	return false
 end
 
--- FELL BACK: crew-built furniture per room.
--- No isPlayerBuilt()/BUILT_BY marker or comparable ModData convention was
--- found anywhere in the installed Lua source for constructed IsoObjects
--- (searched server/BuildingObjects/*.lua, shared/Moveables/*.lua). Vanilla's
--- own build code does not tag what it places as player-made versus
--- map-spawned; the two are the same object type with no distinguishing
--- field. TwoManCrew's own build actions (none exist yet in this mod) would
--- have to stamp their own ModData key at construction time for this to
--- become a real check - out of scope for a checker-only module. Falls back
--- fully to the GOALS.md fallback: a crew-declared claim, confirmed only by
--- proximity (the claiming player must be standing inside the building).
--- Implemented as furnishedDeclared() below rather than a per-square scan.
+-- CREW PRESENCE: a rule in its own right, not a fallback.
+--
+-- This used to stand in for "each room contains crew-built furniture". That
+-- goal was dropped: the engine offers no way to tell crew-built furniture from
+-- map-spawned furniture (no isPlayerBuilt marker exists anywhere in the
+-- installed Lua source, and the Build 42 entity build path does not stamp
+-- ModData - see ISBuildIsoEntity.lua, which never calls setModData).
+--
+-- Rather than delete the check along with the goal, the crew-presence half is
+-- kept deliberately: a building counts as restored only while a crew member is
+-- standing near it. Restoration is something the crew witnesses, not something
+-- that happens off-screen. Implemented as crewPresentNear() below.
 
 -- ---------------------------------------------------------------------------
 -- Building-level check
@@ -169,7 +178,7 @@ end
 -- checks (windows, doors, corpses). Returns:
 --   status:  "restored" | "not_restored" | "unknown"
 --   detail:  { windowsOk, doorsOk, noCorpses, roomsSeen, roomsTotal,
---              furnishedDeclared }
+--              squaresSeen, fullyCovered }
 -- "unknown" means not enough of the building's ground floor is loaded to
 -- trust a verdict either way - never guessed as pass or fail.
 local function checkBuildingSquares(def)
@@ -257,11 +266,9 @@ local function checkBuildingSquares(def)
 	return "not_restored", detail
 end
 
--- FELL BACK check, standalone: is any crew member currently standing inside
--- the claimed building? Used as the "confirmed by proximity" half of the
--- furniture fallback - without an isPlayerBuilt marker, the mod cannot tell
--- crew-built furniture from map-spawned furniture, so "furnished" degrades
--- to a proximity-witnessed claim the crew must be present to make.
+-- Is any crew member currently standing at the claimed building? This is the
+-- crew-presence rule (see the block above). Uses CLAIM_PROXIMITY_RADIUS so
+-- "close enough to witness" means the same distance everywhere in this file.
 local function crewPresentNear(bx, by)
 	for _, p in ipairs(TwoManCrew.getAllPlayers()) do
 		if p:DistTo(bx, by) <= CLAIM_PROXIMITY_RADIUS then
@@ -278,14 +285,13 @@ end
 -- Checks one claimed building entry (as stored in claim.buildings - see
 -- TwoManCrew_Campaign.lua's state.claim.buildings shape: { id, units, x, y }).
 -- Returns:
---   restored:bool  - true only when every checkable condition passed AND a
---                     crew member was present to stand in for the furniture
---                     fallback. false covers both "checked and failed" and
+--   restored:bool  - true only when every condition passed AND a crew member
+--                     was present. false covers both "checked and failed" and
 --                     "not yet checkable" so callers get a safe default;
 --                     check detail.status for the real reason.
 --   detail:table   - { status = "restored"|"not_restored"|"unknown",
---                       windowsOk, doorsOk, noCorpses, furnishedDeclared,
---                       roomsSeen, roomsTotal, fullyCovered }
+--                       windowsOk, doorsOk, noCorpses, crewPresent,
+--                       roomsSeen, roomsTotal, fullyCovered, reason }
 function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 	if not buildingEntry or not buildingEntry.x or not buildingEntry.y then
 		return false, { status = "unknown", reason = "bad building entry" }
@@ -308,23 +314,21 @@ function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 		return false, detail
 	end
 
-	-- Furniture: fallback only. A crew member must currently be standing
-	-- near the building for the claim to count at all - this is the
-	-- "confirmed by proximity" half of the GOALS.md fallback text.
-	local furnishedDeclared = crewPresentNear(buildingEntry.x, buildingEntry.y)
-	detail.furnishedDeclared = furnishedDeclared
+	-- Crew presence: a building only counts while someone is there to see it.
+	local crewPresent = crewPresentNear(buildingEntry.x, buildingEntry.y)
+	detail.crewPresent = crewPresent
 
-	if status == "candidate_restored" and furnishedDeclared then
+	if status == "candidate_restored" and crewPresent then
 		detail.status = "restored"
 		return true, detail
 	end
 
-	if status == "candidate_restored" and not furnishedDeclared then
-		-- Windows/doors/corpses all pass, but nobody was present to stand in
-		-- for the furniture fallback - hold at unknown rather than failing a
-		-- building that is otherwise done.
+	if status == "candidate_restored" and not crewPresent then
+		-- Windows, doors and corpses all pass, but nobody is there. Hold at
+		-- unknown rather than failing a building that is otherwise finished -
+		-- walking back to it must be able to complete it.
 		detail.status = "unknown"
-		detail.reason = "windows/doors/corpses passed but no crew present to confirm furnishing"
+		detail.reason = "no crew member present - stand near the building and check again"
 		return false, detail
 	end
 
@@ -384,22 +388,95 @@ function TwoManCrew.Server.recheckClaim()
 	return count
 end
 
+-- Builds a per-building report of the whole claim, for display.
+--
+-- recheckClaim() deliberately returns only a count, because that is all the
+-- tier logic needs. This returns everything the checker actually computed, so
+-- the journal can show WHICH building failed and WHY - previously all four
+-- conditions collapsed into one number and the crew had no way to tell a
+-- broken window from an unloaded chunk.
+--
+-- Cost: this re-walks every claimed building's ground floor, the same as
+-- recheckClaim(). Call it on demand from a button, never from a tick.
+--
+-- Returns an array, one entry per claimed building, each:
+--   { id, units, x, y,
+--     status     = "restored"|"not_restored"|"unknown",
+--     alreadyDone = boolean,  -- true if previously banked (see below)
+--     windowsOk, doorsOk, noCorpses, crewPresent,  -- may be nil when unknown
+--     roomsSeen, roomsTotal, reason }
+function TwoManCrew.Server.getClaimDetail()
+	local state = TwoManCrew.Server.getState()
+	local claim = state.claim
+	if not claim or not claim.buildings then return {} end
+
+	claim.restored = claim.restored or {}
+
+	local report = {}
+	for _, entry in ipairs(claim.buildings) do
+		local row = {
+			id = entry.id,
+			units = entry.units,
+			x = entry.x,
+			y = entry.y,
+		}
+
+		if claim.restored[entry.id] then
+			-- Already banked. Restoration is an achievement, not a live-held
+			-- state, so do not re-walk it and do not let a wandering corpse
+			-- un-restore it - matching recheckClaim's contract.
+			row.status = "restored"
+			row.alreadyDone = true
+		else
+			local _, detail = TwoManCrew.Server.checkBuildingRestored(entry)
+			row.alreadyDone = false
+			row.status = detail.status or "unknown"
+			row.windowsOk = detail.windowsOk
+			row.doorsOk = detail.doorsOk
+			row.noCorpses = detail.noCorpses
+			row.crewPresent = detail.crewPresent
+			row.roomsSeen = detail.roomsSeen
+			row.roomsTotal = detail.roomsTotal
+			row.reason = detail.reason
+		end
+
+		table.insert(report, row)
+	end
+
+	return report
+end
+
 -- Handles an on-demand client request to rescan the claim (e.g. "/crew
 -- check" from the client side). Mirrors the requestClaim handler shape in
 -- TwoManCrew_Campaign.lua.
 local function OnClientCommand(module, command, player, args)
 	if module ~= TwoManCrew.MODULE then return end
-	if command ~= "requestRestorationCheck" then return end
 	if not player then return end
 
-	local restoredCount = TwoManCrew.Server.recheckClaim()
-	local claim = TwoManCrew.Server.getClaim()
+	if command == "requestRestorationCheck" then
+		local restoredCount = TwoManCrew.Server.recheckClaim()
+		local claim = TwoManCrew.Server.getClaim()
 
-	sendServerCommand(player, TwoManCrew.MODULE, "restorationChecked", {
-		ok = claim ~= nil,
-		restored = restoredCount,
-		total = claim and #claim.buildings or 0,
-	})
+		sendServerCommand(player, TwoManCrew.MODULE, "restorationChecked", {
+			ok = claim ~= nil,
+			restored = restoredCount,
+			total = claim and #claim.buildings or 0,
+		})
+		return
+	end
+
+	if command == "requestClaimDetail" then
+		-- Rescan first, so the detail shown is current rather than a snapshot
+		-- of whenever the last tick ran.
+		TwoManCrew.Server.recheckClaim()
+		local claim = TwoManCrew.Server.getClaim()
+
+		sendServerCommand(player, TwoManCrew.MODULE, "claimDetail", {
+			ok = claim ~= nil,
+			buildings = TwoManCrew.Server.getClaimDetail(),
+		})
+		return
+	end
 end
 
 Events.OnClientCommand.Add(OnClientCommand)

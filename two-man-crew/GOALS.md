@@ -18,13 +18,13 @@ makes progress legible - a house is either whole or it is not.
 
 ## The five tiers
 
-| Tier | Name             | Condition                                            |
-| ---- | ---------------- | ---------------------------------------------------- |
-| 1    | One House        | one building fully repaired and refurnished          |
-| 2    | The Row          | three adjacent buildings restored                    |
-| 3    | The Square       | one large public building made whole                 |
-| 4    | The Walls        | the block's perimeter sealed - every gap barricaded  |
-| 5    | The Rebuilt Town | all buildings on the claimed block restored and held |
+| Tier | Name                  | Condition                                                   |
+| ---- | --------------------- | ----------------------------------------------------------- |
+| 1    | One House             | one building fully repaired and refurnished                 |
+| 2    | The Row               | three adjacent buildings restored                           |
+| 3    | Half the Block        | half the claimed block's buildings restored                 |
+| 4    | Every Door and Window | every building restored - all doors hung, all windows sound |
+| 5    | The Rebuilt Town      | all buildings on the claimed block restored and held        |
 
 Tier 5 additionally requires the crew to hold the block for a stretch of nights,
 so the campaign ends on survival rather than on a final hammer blow.
@@ -35,11 +35,12 @@ A building counts as restored when all of these hold:
 
 - every broken window on its ground floor is boarded or replaced
 - every doorway has a working door
-- each of its rooms contains at least one crew-built furniture piece
 - no zombie corpse remains inside it
+- a crew member is present to witness it
 
-Each condition is observable from the game's own state, so the mod can check
-rather than take the player's word for it.
+Each condition is observable from the game's own state, so the mod checks rather than takes the
+player's word for it. The original fourth condition - crew-built furniture in every room - was
+dropped: the engine gives no way to tell crew-built furniture from furniture the map spawned.
 
 ## The livestock track
 
@@ -61,12 +62,18 @@ their trade to keep animals, which is the same test every other tier had to pass
 
 ### The four livestock stages
 
-| Stage | Name        | Condition                                                |
-| ----- | ----------- | -------------------------------------------------------- |
-| L1    | The Pen     | a fenced enclosure with a working feeding trough         |
-| L2    | First Stock | at least one living animal kept inside the claimed block |
-| L3    | The Hutch   | a chicken hutch built and occupied                       |
-| L4    | The Herd    | animals surviving a full season, second generation born  |
+| Stage | Name        | Condition                                                 |
+| ----- | ----------- | --------------------------------------------------------- |
+| L1    | The Trough  | a feeding trough built on the claimed block               |
+| L2    | First Stock | at least one living animal kept near the crew             |
+| L3    | The Hutch   | a hutch built and occupied, confirmed while standing near |
+| L4    | The Herd    | a young animal kept alive near the crew for 30 nights     |
+
+These stages name what the mod can actually verify. Two engine limits shape them. Feeding troughs
+have a server-side global object system, so a trough is detectable anywhere on the claim; hutches
+do not, so a hutch is only detectable while a crew member is near it. Animals live on simulated
+ground, so the animal count is a proximity census rather than a true block-wide survey - an animal
+in an unloaded corner of the block is invisible, not absent.
 
 L4 pairs naturally with the block-holding requirement of tier 5: a herd that
 lasts a season proves the town works, not just that it stands.
@@ -91,12 +98,16 @@ instanceof(obj, "IsoAnimal")             -- client/DebugUIs/DebugContextMenu.lua
 `isBaby()` is what makes "second generation born" checkable rather than a claim -
 a baby animal inside the claimed block is direct evidence the herd bred.
 
-**Implementation note (2026-08-21).** L1 and L3 read tally keys `pensBuilt` and
-`hutchesBuilt`, but no feature writes them: Build 42 exposes no marker
-distinguishing a crew-built fence or hutch from a map-spawned one. Both stages
-therefore resolve through the animal-count proxy in practice. The tally branches
-are kept because they are correct the moment any future feature populates those
-keys, but today they are dormant, not live.
+**Implementation note (2026-08-22).** L1 and L3 are now real structure checks, not tallies. L1
+reads the server-side feeding-trough global object system and asks whether a trough stands within
+the claim's bounds; it does **not** verify the enclosure is fenced, because no enclosure test
+exists in the engine's Lua surface. L3 scans loaded squares for an `IsoHutch` with an animal
+inside, which is why it is confirmable only while a crew member is nearby.
+
+The `pensBuilt` and `hutchesBuilt` tally keys survive as fallbacks for the case where the structure
+check cannot run at all - an unreadable trough system, or a claim recorded before building
+footprints existed. Neither stage falls back to "an animal is nearby" any more: that proxy let a
+wild deer complete L1 and two wild rabbits complete L3.
 
 **Unverified, check before relying on it:** a way to enumerate every animal
 within an area, and a direct read of an animal zone's contents. If absent, L2
