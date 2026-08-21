@@ -43,7 +43,14 @@ function TwoManCrewPanel:new(x, y, width, height)
 
 	o.partnerName = nil
 	o.refreshTimer = 0
+	o.pressed = false
+	o.canDrag = false
+	o.dragMoved = false
+	---@type table<string, number>|nil
 	o.tally = nil
+	--- Newest journal entry from the server's crewReport reply, or nil before
+	--- the first reply arrives. Shape mirrors TwoManCrew_CrewState.addJournal.
+	---@type { text: string, playerName: string, worldAgeHours: number }|nil
 	o.lastJournal = nil
 
 	TwoManCrewPanel.instance = o
@@ -132,8 +139,13 @@ function TwoManCrewPanel:prerender()
 		y = y + line
 	end
 
-	if showJournal and self.lastJournal.text then
-		local text = self.lastJournal.text
+	-- Read the entry into a local before touching its fields. showJournal
+	-- already implies lastJournal is non-nil, but going through the local
+	-- keeps that guarantee visible at the point of use instead of two lines
+	-- above, and drops the two remaining analyser warnings on this file.
+	local entry = self.lastJournal
+	if showJournal and entry and entry.text then
+		local text = entry.text
 		-- Wider panel fits more text, so the truncation point follows scale.
 		local maxChars = math.floor(28 * scale)
 		if #text > maxChars then text = string.sub(text, 1, maxChars - 1) .. "..." end
@@ -165,14 +177,17 @@ end
 -- on mouse-up: if the pointer moved while held, it was a drag, otherwise it was
 -- a click. That avoids a modifier key and avoids opening the journal every time
 -- you reposition the panel.
+-- A locked panel must still OPEN the journal - locking is about not moving the
+-- panel by accident, not about disabling it. The click is therefore always
+-- tracked; `canDrag` is what locking turns off. Previously locking left
+-- dragging false, and since the journal opened only from the `dragging`
+-- branch of onMouseUp, a locked panel made the journal permanently
+-- unreachable (it is the mod's only opener).
 function TwoManCrewPanel:onMouseDown(x, y)
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
-	if prefs.locked then
-		self.dragging = false
-		return true
-	end
 
-	self.dragging = true
+	self.pressed = true
+	self.canDrag = not prefs.locked
 	self.dragMoved = false
 	self.dragOffsetX = x
 	self.dragOffsetY = y
@@ -180,7 +195,7 @@ function TwoManCrewPanel:onMouseDown(x, y)
 end
 
 function TwoManCrewPanel:onMouseMove(dx, dy)
-	if not self.dragging then return end
+	if not self.pressed or not self.canDrag then return end
 	if dx == 0 and dy == 0 then return end
 
 	self.dragMoved = true
@@ -189,7 +204,7 @@ function TwoManCrewPanel:onMouseMove(dx, dy)
 end
 
 function TwoManCrewPanel:onMouseUp(x, y)
-	if self.dragging and self.dragMoved then
+	if self.pressed and self.dragMoved then
 		-- Drag finished: persist where it landed, clamped back on screen so a
 		-- panel dragged off the edge is not lost on next login.
 		local player = getPlayer()
@@ -199,18 +214,21 @@ function TwoManCrewPanel:onMouseUp(x, y)
 		TwoManCrew.Prefs.clampToScreen(prefs, self.width, self.height)
 		self:setX(prefs.x)
 		self:setY(prefs.y)
-	elseif self.dragging and TwoManCrewJournalWindow and TwoManCrewJournalWindow.toggle then
+	elseif self.pressed and TwoManCrewJournalWindow and TwoManCrewJournalWindow.toggle then
+		-- Click without movement, locked or not: open the journal.
 		TwoManCrewJournalWindow.toggle()
 	end
 
-	self.dragging = false
+	self.pressed = false
+	self.canDrag = false
 	self.dragMoved = false
 	return true
 end
 
 -- Mouse leaving the element mid-drag must not strand it in dragging state.
 function TwoManCrewPanel:onMouseUpOutside(x, y)
-	self.dragging = false
+	self.pressed = false
+	self.canDrag = false
 	self.dragMoved = false
 	return true
 end

@@ -33,14 +33,25 @@ local DEFAULTS = {
 -- context menu is worse than four honest choices.
 TwoManCrew.Prefs.SCALES = { 0.85, 1.0, 1.25, 1.5 }
 
+-- Returns a fresh copy of the defaults. Callers that have no player to read
+-- from get this instead of the DEFAULTS table itself: every mutator writes
+-- through whatever get() hands back, so returning the shared table let one
+-- call with no player (getPlayer() is nil between saves and during early
+-- load) permanently rewrite the defaults for every character created after.
+local function copyDefaults()
+	local copy = {}
+	for k, v in pairs(DEFAULTS) do copy[k] = v end
+	return copy
+end
+
 -- Returns the live preference table for this player, creating it with defaults
 -- on first use. Mutating the returned table persists with the save.
 function TwoManCrew.Prefs.get(player)
 	player = player or getPlayer()
-	if not player then return DEFAULTS end
+	if not player then return copyDefaults() end
 
 	local md = player:getModData()
-	if not md then return DEFAULTS end
+	if not md then return copyDefaults() end
 
 	local prefs = md[KEY]
 	if not prefs then

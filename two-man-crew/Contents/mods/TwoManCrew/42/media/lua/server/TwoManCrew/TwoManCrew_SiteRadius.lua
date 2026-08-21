@@ -5,6 +5,10 @@
 -- the client's own check (client/TwoManCrew/TwoManCrew_SiteRadius.lua) is a
 -- hint only.
 
+require "TwoManCrew/TwoManCrew_Config"
+
+if isClient() then return end
+
 local COOLDOWN_KEY = "SiteRadius"
 
 local function awardSiteBonus(player, partner)

@@ -7,6 +7,10 @@
 -- exactly as required by SPEC.md "Never trust a client-supplied value the
 -- server can compute itself."
 
+require "TwoManCrew/TwoManCrew_Config"
+
+if isClient() then return end
+
 local COOLDOWN_KEY = "MastersMark"
 
 local function awardMastersMark(player, partner, count)

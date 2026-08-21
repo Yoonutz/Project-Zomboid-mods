@@ -2,3 +2,6 @@ name=Two-Man Crew
 id=TwoManCrew
 author=Ionut F
 description=Co-op bonuses for a Lumberjack and Carpenter working as a crew.
+pzversion=42
+modversion=0.1.0
+versionMin=42.0.0

@@ -4,6 +4,10 @@
 -- awarding anything. The server is authoritative; the client's own check
 -- (client/TwoManCrew/TwoManCrew_FellingBonus.lua) is a hint only.
 
+require "TwoManCrew/TwoManCrew_Config"
+
+if isClient() then return end
+
 local COOLDOWN_KEY = "FellingBonus"
 
 local function awardFellingBonus(player, partner)

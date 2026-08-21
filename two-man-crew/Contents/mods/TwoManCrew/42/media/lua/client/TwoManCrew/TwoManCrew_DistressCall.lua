@@ -24,7 +24,14 @@
 require "TwoManCrew/TwoManCrew_Config"
 
 local cfg = TwoManCrew.DistressCall
-local COOLDOWN_KEY = "DistressCall_Send"
+
+-- Client-only key, deliberately NOT the server's "DistressCall_Send".
+-- On a listen-server host (and anywhere client and server Lua share one state)
+-- both halves read the same player:getModData() table, so reusing one key made
+-- the client's own optimistic cooldown block the server handler that runs
+-- immediately after - the partner was never alerted. The server keeps its own
+-- key and stays authoritative; this one only stops a keypress burst locally.
+local COOLDOWN_KEY = "DistressCall_SendLocal"
 
 local DISTRESS_KEY = Keyboard.KEY_F9
 

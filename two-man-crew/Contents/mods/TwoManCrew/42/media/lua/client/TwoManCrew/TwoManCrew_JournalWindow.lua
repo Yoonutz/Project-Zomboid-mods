@@ -48,6 +48,7 @@ TwoManCrewJournalWindow = ISCollapsableWindow:derive("TwoManCrewJournalWindow")
 
 local PAD = 8
 local ROW = 20
+local BUTTON_W = 90
 
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape
@@ -80,7 +81,7 @@ function TwoManCrewJournalWindow:createChildren()
 	-- of this file for why this is a button rather than an ISTabPanel.
 	self.activeView = "journal"
 
-	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, self.height - top - ROW - PAD)
+	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, ROW)
 	self.list:initialise()
 	self.list:instantiate()
 	self.list.itemheight = ROW
@@ -89,21 +90,21 @@ function TwoManCrewJournalWindow:createChildren()
 	self:addChild(self.list)
 
 	self.refreshButton = ISButton:new(
-		PAD, self.height - ROW - PAD, 90, ROW,
+		PAD, 0, BUTTON_W, ROW,
 		"Refresh", self, TwoManCrewJournalWindow.onRefresh
 	)
 	self.refreshButton:initialise()
 	self:addChild(self.refreshButton)
 
 	self.claimButton = ISButton:new(
-		PAD + 96, self.height - ROW - PAD, 110, ROW,
+		PAD, 0, BUTTON_W, ROW,
 		"Claim a block", self, TwoManCrewJournalWindow.onClaim
 	)
 	self.claimButton:initialise()
 	self:addChild(self.claimButton)
 
 	self.viewButton = ISButton:new(
-		PAD + 96 + 116, self.height - ROW - PAD, 120, ROW,
+		PAD, 0, BUTTON_W, ROW,
 		"View: Campaign", self, TwoManCrewJournalWindow.onToggleView
 	)
 	self.viewButton:initialise()
@@ -114,13 +115,66 @@ function TwoManCrewJournalWindow:createChildren()
 	-- ever updated on the ten-minute tick, and a crew that had just finished a
 	-- house had no way to see it counted.
 	self.checkButton = ISButton:new(
-		PAD + 96 + 116 + 126, self.height - ROW - PAD, 120, ROW,
+		PAD, 0, BUTTON_W, ROW,
 		"Check progress", self, TwoManCrewJournalWindow.onCheckRestoration
 	)
 	self.checkButton:initialise()
 	self:addChild(self.checkButton)
 
+	-- Every child above is created at a placeholder position; layout() is the
+	-- single owner of where they actually sit, so the window is laid out the
+	-- same way on first open and on every resize.
+	self:layout()
+
 	self:onRefresh()
+end
+
+-- Positions the list and the button row from the CURRENT window size.
+--
+-- Previously these were positioned inline in createChildren() against the
+-- construction-time width/height, which produced two defects: the list was
+-- given the full height below the header (`self.height - top - ROW - PAD`)
+-- while the buttons were placed at `self.height - ROW - PAD`, so the list
+-- covered the button row by exactly ROW pixels; and the four fixed button
+-- offsets summed to 466px inside a 440px window, pushing "Check progress"
+-- 34px off the right edge. Both are now derived, and the window is
+-- resizable, so this runs again on every resize.
+function TwoManCrewJournalWindow:layout()
+	local top = self:titleBarHeight() + PAD
+	local buttonsY = self.height - ROW - PAD
+
+	-- List stops above the button row, never behind it.
+	local listY = top + ROW
+	local listH = buttonsY - PAD - listY
+	if listH < ROW then listH = ROW end
+
+	self.list:setX(PAD)
+	self.list:setY(listY)
+	self.list:setWidth(self.width - PAD * 2)
+	self.list:setHeight(listH)
+
+	-- Buttons share the usable width evenly, so they always fit whatever the
+	-- window has been resized to rather than overflowing a fixed layout.
+	local buttons = { self.refreshButton, self.claimButton, self.viewButton, self.checkButton }
+	local gap = 6
+	local usable = self.width - PAD * 2 - gap * (#buttons - 1)
+	local each = math.floor(usable / #buttons)
+	if each < 40 then each = 40 end
+
+	local x = PAD
+	for i = 1, #buttons do
+		buttons[i]:setX(x)
+		buttons[i]:setY(buttonsY)
+		buttons[i]:setWidth(each)
+		x = x + each + gap
+	end
+end
+
+-- Resizable window: re-run the same layout the constructor used, so dragging
+-- the corner can never reintroduce the overlap this replaced.
+function TwoManCrewJournalWindow:onResize()
+	ISCollapsableWindow.onResize(self)
+	self:layout()
 end
 
 -- Asks the server for the current tally and journal. The reply lands in
@@ -313,6 +367,14 @@ end
 function TwoManCrewJournalWindow:prerender()
 	ISCollapsableWindow.prerender(self)
 
+	-- Icon sits at the left of the title bar. The base class centres the title
+	-- text, so this never overlaps it.
+	if self.titleIcon then
+		local th = self:titleBarHeight()
+		local size = th - 4
+		self:drawTextureScaled(self.titleIcon, 4, 2, size, size, 1, 1, 1, 1)
+	end
+
 	-- Repopulate only when the underlying report changed (or the view was
 	-- just toggled, which nils these out), so the list does not rebuild
 	-- every frame.
@@ -352,6 +414,13 @@ function TwoManCrewJournalWindow:new(x, y, width, height)
 	local o = ISCollapsableWindow:new(x, y, width, height)
 	setmetatable(o, self)
 	self.__index = self
+
+	-- Title-bar icon. Loaded once per window rather than per frame, and left
+	-- nil-safe: getTexture returns nil for a missing file, and prerender skips
+	-- the draw in that case, so a packaging mistake costs the icon and not the
+	-- window. Path is the mod's own media/ui, mirroring vanilla's
+	-- getTexture("media/ui/...") convention (client/Chat/ISChat.lua:921-924).
+	o.titleIcon = getTexture("media/ui/TwoManCrew_Journal_16.png")
 
 	o.title = "Crew Journal"
 	o.resizable = true
