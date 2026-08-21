@@ -42,6 +42,9 @@ harmless in single-player.
 Open the journal and press **Claim a block**. The server surveys the buildings
 around you and assigns one - you do not choose it, and you cannot reroll it.
 
+**Check progress** rescans your claim on demand. Otherwise it updates by itself
+every ten in-game minutes.
+
 The assignment is sized so it can actually be finished. A block worth roughly
 18 to 34 rooms of restoration work is accepted; anything larger is rejected, and
 no single oversized building can swallow the whole campaign.
@@ -96,8 +99,8 @@ and report what the log says.
 ## For developers
 
 `SPEC.md` holds the build contract and the verified Build 42 API list.
-`GOALS.md` designs the campaign layer; block assignment is implemented, the
-restoration tiers are not yet.
+`GOALS.md` designs the campaign layer. Block assignment, restoration checks and
+the nine tiers are all implemented.
 
 Check every Lua file parses:
 

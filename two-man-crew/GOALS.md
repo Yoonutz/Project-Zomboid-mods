@@ -91,6 +91,13 @@ instanceof(obj, "IsoAnimal")             -- client/DebugUIs/DebugContextMenu.lua
 `isBaby()` is what makes "second generation born" checkable rather than a claim -
 a baby animal inside the claimed block is direct evidence the herd bred.
 
+**Implementation note (2026-08-21).** L1 and L3 read tally keys `pensBuilt` and
+`hutchesBuilt`, but no feature writes them: Build 42 exposes no marker
+distinguishing a crew-built fence or hutch from a map-spawned one. Both stages
+therefore resolve through the animal-count proxy in practice. The tally branches
+are kept because they are correct the moment any future feature populates those
+keys, but today they are dormant, not live.
+
 **Unverified, check before relying on it:** a way to enumerate every animal
 within an area, and a direct read of an animal zone's contents. If absent, L2
 and L4 fall back to counting animals seen near the crew, which is weaker but

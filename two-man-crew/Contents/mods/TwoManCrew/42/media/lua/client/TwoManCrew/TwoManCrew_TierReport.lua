@@ -36,8 +36,29 @@ end
 
 local function onServerCommand(module, command, args)
 	if module ~= TwoManCrew.MODULE then return end
-	if command ~= "tierProgress" then return end
 	if not args then return end
+
+	-- Reply to the journal window's "Check progress" button. The server
+	-- rescanned the claim; report the result and pull fresh tier progress so
+	-- the campaign view reflects the rescan rather than the last timer tick.
+	if command == "restorationChecked" then
+		local player = getPlayer()
+		if not player then return end
+
+		if not args.ok then
+			HaloTextHelper.addBadText(player, "No claim to check yet.")
+			return
+		end
+
+		HaloTextHelper.addText(player, "Restored: " .. tostring(args.restored) .. " of " .. tostring(args.total))
+
+		if TwoManCrew.Client.requestTierProgress then
+			TwoManCrew.Client.requestTierProgress(player)
+		end
+		return
+	end
+
+	if command ~= "tierProgress" then return end
 
 	TwoManCrew.Client.tierProgressReceived = true
 

@@ -109,6 +109,17 @@ function TwoManCrewJournalWindow:createChildren()
 	self.viewButton:initialise()
 	self:addChild(self.viewButton)
 
+	-- Forces an immediate rescan of the claim. Without this button the server's
+	-- requestRestorationCheck handler had no caller at all: restoration only
+	-- ever updated on the ten-minute tick, and a crew that had just finished a
+	-- house had no way to see it counted.
+	self.checkButton = ISButton:new(
+		PAD + 96 + 116 + 126, self.height - ROW - PAD, 120, ROW,
+		"Check progress", self, TwoManCrewJournalWindow.onCheckRestoration
+	)
+	self.checkButton:initialise()
+	self:addChild(self.checkButton)
+
 	self:onRefresh()
 end
 
@@ -123,6 +134,17 @@ function TwoManCrewJournalWindow:onRefresh()
 	if TwoManCrew.Client and TwoManCrew.Client.requestTierProgress then
 		TwoManCrew.Client.requestTierProgress(getPlayer())
 	end
+end
+
+-- Asks the server to rescan the claim now rather than waiting for the timer.
+-- The server owns the verdict; this only requests it. Reply is handled in
+-- TwoManCrew_TierReport.lua's OnServerCommand, which refreshes this window.
+function TwoManCrewJournalWindow:onCheckRestoration()
+	local player = getPlayer()
+	if not player then return end
+
+	sendClientCommand(player, TwoManCrew.MODULE, "requestRestorationCheck", {})
+	HaloTextHelper.addText(player, "Checking the claim...")
 end
 
 -- Asks the server to survey and assign a block. The server decides which one
