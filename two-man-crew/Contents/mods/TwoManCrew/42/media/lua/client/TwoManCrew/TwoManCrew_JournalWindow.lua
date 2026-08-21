@@ -141,7 +141,15 @@ end
 -- resizable, so this runs again on every resize.
 function TwoManCrewJournalWindow:layout()
 	local top = self:titleBarHeight() + PAD
-	local buttonsY = self.height - ROW - PAD
+
+	-- The bottom strip belongs to the resize widgets (ISCollapsableWindow.lua:34-49
+	-- creates a corner widget and a full-width bottom widget, both rh tall) and to
+	-- the status bar the base render() paints over it (ISCollapsableWindow.lua:185-191).
+	-- Placing the button row at height-ROW-PAD put it on top of that strip, so the
+	-- bottom of every button was overdrawn and the bottom edge swallowed the clicks.
+	-- Reserve the strip and sit the buttons above it.
+	local rh = self.resizable and self:resizeWidgetHeight() or 0
+	local buttonsY = self.height - rh - ROW - PAD
 
 	-- List stops above the button row, never behind it.
 	local listY = top + ROW
@@ -172,9 +180,18 @@ end
 
 -- Resizable window: re-run the same layout the constructor used, so dragging
 -- the corner can never reintroduce the overlap this replaced.
+--
+-- ISResizeWidget drives the parent's size while dragging. Neither
+-- ISCollapsableWindow nor ISPanel defines onResize, so the call below
+-- resolves up the chain to ISUIElement:onResize (ISUIElement.lua:563), which
+-- re-reads width/height and applies minimumWidth/minimumHeight. The nil guard
+-- matters because a resize can arrive before createChildren has finished
+-- building the row (the base createChildren adds the resize widgets first).
 function TwoManCrewJournalWindow:onResize()
 	ISCollapsableWindow.onResize(self)
-	self:layout()
+	if self.list and self.refreshButton then
+		self:layout()
+	end
 end
 
 -- Asks the server for the current tally and journal. The reply lands in
@@ -367,12 +384,18 @@ end
 function TwoManCrewJournalWindow:prerender()
 	ISCollapsableWindow.prerender(self)
 
-	-- Icon sits at the left of the title bar. The base class centres the title
-	-- text, so this never overlaps it.
+	-- Icon sits in the title bar, immediately right of the close button.
+	--
+	-- It used to draw at x=4, which is underneath the close button: the base
+	-- class puts that button at x=1 with width titleBarHeight-2
+	-- (ISCollapsableWindow.lua:55), and buttons are children, so they render
+	-- AFTER this prerender and painted straight over the icon. The icon was
+	-- being drawn every frame and never seen. Start past the button instead.
 	if self.titleIcon then
 		local th = self:titleBarHeight()
 		local size = th - 4
-		self:drawTextureScaled(self.titleIcon, 4, 2, size, size, 1, 1, 1, 1)
+		local iconX = 1 + (th - 2) + 2
+		self:drawTextureScaled(self.titleIcon, iconX, 2, size, size, 1, 1, 1, 1)
 	end
 
 	-- Repopulate only when the underlying report changed (or the view was
@@ -425,6 +448,23 @@ function TwoManCrewJournalWindow:new(x, y, width, height)
 	o.title = "Crew Journal"
 	o.resizable = true
 	o.drawFrame = true
+
+	-- The base prerender only fills the window body when self.background is
+	-- true (ISCollapsableWindow.lua:163-167); ISPanel's constructor does not
+	-- set it, and neither did this window. Result: only the title bar was
+	-- painted and the game world showed through everywhere the list did not
+	-- cover, which is the "renders weirdly" look. setDrawFrame sets both flags
+	-- together (ISCollapsableWindow.lua:356-364), so keep them in step here.
+	o.background = true
+
+	-- ISResizeWidget clamps a drag to the target's minimumWidth/minimumHeight
+	-- (ISResizeWidget.lua:13-22) and both default to 0, so the window could be
+	-- dragged down to nothing and the button row would be squashed to its 40px
+	-- floor and overlap. Four buttons plus the gaps and padding is the real
+	-- floor for width; the title bar, header line, one list row and the button
+	-- row is the floor for height.
+	o.minimumWidth = PAD * 2 + BUTTON_W * 4 + 6 * 3
+	o.minimumHeight = 160
 	o.lastSeenReport = nil
 
 	return o

@@ -34,3 +34,22 @@
 - Before committing a change to any `.md` file this repo authored (root files,
   `docs/*.md` — not the vendored `docs/pz-modding-guide/` snapshot), run
   `npx prettier --check "*.md" "docs/*.md"` and fix anything it flags.
+
+- TwoManCrew installs into `~/Zomboid/mods/` by **copy**, via
+  `node deploy.mjs` from `two-man-crew/`. The directory junction that used to
+  live there was deleted 2026-08-22 — do not recreate it or suggest it. The
+  script wipes the destination first, so files deleted in the repo also leave
+  the install, and it refuses to run when the destination is a link.
+  `node deploy.mjs --check` compares repo and installed versions and writes
+  nothing. Never deploy while the game is running — ask first, since it
+  replaces the folder under a live session. For multiplayer, both players need
+  the same `modversion`; a mismatch there is a version problem, not an
+  install-method problem.
+
+- The installed copy is deliberately allowed to lag the repo. As of
+  2026-08-22 it is pinned to 0.1.0 so it matches the other player in a
+  co-op save, while the repo is ahead. Do not "sync" the install to the
+  repo without asking. To install a past version without disturbing the
+  working tree, extract it from its commit
+  (`git archive <commit> two-man-crew/Contents/mods/TwoManCrew`) and copy
+  from there — never `git checkout` an old version over the working tree.
