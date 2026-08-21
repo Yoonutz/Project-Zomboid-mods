@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime.version": "Lua 5.1",
+  "workspace.library": ["types"],
+  "workspace.ignoreDir": ["**/node_modules", "docs"],
+  "diagnostics.globals": [],
+  "diagnostics.disable": ["duplicate-set-field"],
+  "diagnostics.libraryFiles": "Disable",
+  "telemetry.enable": false
+}

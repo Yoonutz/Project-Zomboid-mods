@@ -16,6 +16,14 @@
 - No in-game testing happens automatically in this environment. Any change to
   a `.txt` script or `.lua` file is a syntax-level claim only until it's been
   loaded in PZ and checked against `~/Zomboid/Logs/` for parse errors.
+- Editor diagnostics come from `.luarc.json` + `types/pz.lua` (a `---@meta`
+  stub for the PZ globals). `types/` sits outside every mod's `Contents/`, so
+  it is never packaged. When a mod starts using a new engine global, add it to
+  the stub with a signature verified against the installed game source rather
+  than silencing the warning. Check the whole repo with:
+  `lua-language-server --check=. --checklevel=Warning` from the repo root -
+  run it from the root, not a mod subfolder, or `.luarc.json` is not picked up.
+
 - Before committing a change to any `.md` file this repo authored (root files,
   `docs/*.md` — not the vendored `docs/pz-modding-guide/` snapshot), run
   `npx prettier --check "*.md" "docs/*.md"` and fix anything it flags.
