@@ -39,8 +39,9 @@ local function OnPlayerUpdate(player)
 	if tickCounter < CHECK_INTERVAL_TICKS then return end
 	tickCounter = 0
 
-	if TwoManCrew.isAlone(player) then return end -- alone: silent no-op per SPEC
-
+	-- No isAlone() guard here: it is getPartner(player) == nil internally, so
+	-- calling both ran the whole player scan twice per check on an
+	-- OnPlayerUpdate path. The nil check below is the same test, once.
 	local partner = TwoManCrew.getPartner(player)
 	if not partner then return end
 

@@ -74,13 +74,22 @@ end
 local function EveryTenMinutes()
 	if not isNightHour() then return end
 
+	-- Track who has already been credited this pass. Without this the loop
+	-- would rely on awardShiftChangeBonus starting the cooldown on BOTH
+	-- players to stop the partner being processed again on their own
+	-- iteration - true today, but an invisible coupling that a later edit to
+	-- the award function would silently break into a double award.
+	local awarded = {}
+
 	for _, player in ipairs(TwoManCrew.getAllPlayers()) do
-		if not TwoManCrew.onCooldown(player, SHIFT_KEY, SHIFT_LENGTH_SECONDS) then
+		if not awarded[player] and not TwoManCrew.onCooldown(player, SHIFT_KEY, SHIFT_LENGTH_SECONDS) then
 			local partner = TwoManCrew.getPartner(player)
 			-- Alone: silent no-op per SPEC. No cooldown is started, so a
 			-- solo player who later finds a partner is never penalized
 			-- for the time spent alone.
 			if partner then
+				awarded[player] = true
+				awarded[partner] = true
 				awardShiftChangeBonus(player, partner)
 			end
 		end
