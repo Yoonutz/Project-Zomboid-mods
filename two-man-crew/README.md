@@ -37,23 +37,50 @@ harmless in single-player.
 | Crew Journal          | A running log of who did what, and when              |
 | Distress Call         | **F9** marks your position for your partner          |
 
+## The campaign
+
+Open the journal and press **Claim a block**. The server surveys the buildings
+around you and assigns one - you do not choose it, and you cannot reroll it.
+
+The assignment is sized so it can actually be finished. A block worth roughly
+18 to 34 rooms of restoration work is accepted; anything larger is rejected, and
+no single oversized building can swallow the whole campaign.
+
 ## On-screen crew panel
 
 A small panel sits in the top-left corner while you play. No key needed - it
 shows, at a glance:
 
 - whether your partner is nearby, or that you are working alone
-- a red warning when your partner has zombies on them
 - how many crew deeds you have racked up
 - the latest line from the crew journal
 
 Project Zomboid does not let mods add a real moodle - that list is fixed in the
 game itself - so this is a custom panel instead.
 
+**Left click** it to open the crew journal. **Drag** it anywhere; where you drop
+it is remembered. **Right click** it for a settings menu: panel size, which
+lines to show, lock its position, or reset it.
+
+Panel position and size are yours alone - your partner keeps their own layout.
+
+## What is shared and what is not
+
+| Shared between you both | Yours alone             |
+| ----------------------- | ----------------------- |
+| The claimed block       | Panel position and size |
+| Crew tally of deeds     | Which lines you show    |
+| The crew journal        | Your own cooldowns      |
+| Campaign progress       |                         |
+
+Everything shared lives on the server, so both of you see the same campaign and
+the same log. Neither of you can edit it locally.
+
 ## Controls
 
 - **F9** - send a distress call. Your partner sees your direction and distance.
-- **F7** - print the full crew tally and journal, more detail than the panel fits.
+
+Everything else is clicked, not typed. There are no other keys to learn.
 
 ## Requirements
 
@@ -69,7 +96,8 @@ and report what the log says.
 ## For developers
 
 `SPEC.md` holds the build contract and the verified Build 42 API list.
-`GOALS.md` designs a campaign layer that is not yet implemented.
+`GOALS.md` designs the campaign layer; block assignment is implemented, the
+restoration tiers are not yet.
 
 Check every Lua file parses:
 
