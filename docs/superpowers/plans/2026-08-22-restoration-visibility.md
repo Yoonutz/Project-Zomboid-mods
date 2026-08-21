@@ -73,7 +73,7 @@ when it parses; it is done when the stated in-game observation holds.
 - **Bump `modversion` in the same commit as any behaviour change**, in BOTH
   `two-man-crew/Contents/mods/TwoManCrew/mod.info` and
   `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`. They must stay byte-identical. Current
-  version is `0.1.2`. This plan ends at `0.1.15`.
+  version is `0.1.2`. This plan ends at `0.1.16`.
 - **Never touch the installed game folder.** `~/Zomboid/mods/TwoManCrew` is deliberately pinned to
   `0.1.0` to match another player. Do not deploy, sync, or "helpfully update" it.
 - **Do not add Claude attribution to commits.**
@@ -377,8 +377,8 @@ function getSpecificPlayer(index) end
 
 - [ ] **Step 9: Bump modversion to 0.1.3 in both files and commit**
 
-Note: the listen-host correction landed as a second commit and took 0.1.4, so Task 0 consumed
-both slots. Task 1 starts at 0.1.5 and every later task shifts up by one accordingly.
+Note: Task 0 shipped as three commits and consumed 0.1.3, 0.1.4 (listen-host correction) and
+0.1.6 (code-review fixes). Task 1 starts at 0.1.6 and every later task shifts up accordingly.
 
 Note this takes the 0.1.3 slot; every later task in this plan shifts up by one. Confirm both files
 match:
@@ -515,7 +515,7 @@ function IsoWindow:isGlassRemoved() end
 
 - [ ] **Step 4: Bump modversion in both files**
 
-Set `modversion=0.1.5` in both `mod.info` files, then confirm they are identical:
+Set `modversion=0.1.6` in both `mod.info` files, then confirm they are identical:
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && echo IDENTICAL
@@ -673,7 +673,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.6 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.7 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1129,7 +1129,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 9: Bump modversion to 0.1.7 in both files and commit**
+- [ ] **Step 9: Bump modversion to 0.1.8 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1452,7 +1452,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 8: Bump modversion to 0.1.8 in both files and commit**
+- [ ] **Step 8: Bump modversion to 0.1.9 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1552,7 +1552,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 5: Bump modversion to 0.1.9 in both files and commit**
+- [ ] **Step 5: Bump modversion to 0.1.10 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1770,7 +1770,7 @@ function SFeedingTroughSystem:getLuaObjectCount() end
 function SFeedingTroughSystem:getLuaObjectByIndex(index) end
 ```
 
-- [ ] **Step 7: Bump modversion to 0.1.10 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.11 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1965,7 +1965,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.11 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.12 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2142,7 +2142,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.12 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.13 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2247,7 +2247,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.13 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.14 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2404,7 +2404,7 @@ add the stub to `types/pz.lua` rather than silencing it:
 function ISScrollingListBox:setFont(font, padY) end
 ```
 
-- [ ] **Step 6: Bump modversion to 0.1.14 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.15 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2523,7 +2523,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.15 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.16 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2562,13 +2562,13 @@ cd "d:/Dropbox/Apps/Project Zomboid" && npx prettier --check "*.md" "docs/*.md" 
 
 Expected: `All matched files use Prettier code style!`
 
-- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.15**
+- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.16**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && grep modversion two-man-crew/Contents/mods/TwoManCrew/mod.info
 ```
 
-Expected: no diff output, then `modversion=0.1.15`.
+Expected: no diff output, then `modversion=0.1.16`.
 
 - [ ] **Step 3: Confirm no Claude attribution entered any commit**
 
