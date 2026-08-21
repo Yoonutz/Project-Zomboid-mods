@@ -73,7 +73,7 @@ when it parses; it is done when the stated in-game observation holds.
 - **Bump `modversion` in the same commit as any behaviour change**, in BOTH
   `two-man-crew/Contents/mods/TwoManCrew/mod.info` and
   `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`. They must stay byte-identical. Current
-  version is `0.1.2`. This plan ends at `0.1.14`.
+  version is `0.1.2`. This plan ends at `0.1.15`.
 - **Never touch the installed game folder.** `~/Zomboid/mods/TwoManCrew` is deliberately pinned to
   `0.1.0` to match another player. Do not deploy, sync, or "helpfully update" it.
 - **Do not add Claude attribution to commits.**
@@ -112,9 +112,10 @@ Verified against the installed source: server code uses `getOnlinePlayers()` -
 tree sits inside a commented-out block guarded by `if isServer() then return end`
 (`server/Seasons/season.lua:121-124`) - i.e. vanilla itself does not use it server-side.
 
-**The singleplayer half, which matters here.** `getOnlinePlayers()` is a dedicated-server call.
-Vanilla's own pattern branches on `isServer()` and falls back to `getSpecificPlayer` -
-`server/XpSystem/XpUpdate.lua:301-303`:
+**The singleplayer half, which matters here.** `getOnlinePlayers()` covers every multiplayer case,
+host and remote client alike - it is NOT dedicated-server only (verified client-side at
+`client/Chat/ISChat.lua:560`). Singleplayer has no online list at all, and falls back to
+`getSpecificPlayer` - the branch vanilla uses at `server/XpSystem/XpUpdate.lua:301-303`:
 
 ```lua
 	local playersNumber = isServer() and players:size()-1 or getNumActivePlayers()-1
@@ -164,15 +165,20 @@ In `TwoManCrew_Config.lua`, insert immediately above `function TwoManCrew.getNea
 -- vanilla server/ tree is inside a commented-out block
 -- (server/Seasons/season.lua:121-124).
 --
--- getOnlinePlayers() is a dedicated-server call, so singleplayer and the local
--- half of a listen server go through getSpecificPlayer instead - the branch
--- vanilla itself uses at server/XpSystem/XpUpdate.lua:301-303. This repo has
--- already shipped one singleplayer regression from ignoring that case
--- (commit 4e8980c), so the branch is deliberate, not defensive noise.
+-- getOnlinePlayers() covers every multiplayer case, host and client alike.
+-- Singleplayer has no online-player list at all, so it goes through
+-- getSpecificPlayer instead - the same branch vanilla uses at
+-- server/XpSystem/XpUpdate.lua:301-303. This repo has already shipped one
+-- singleplayer regression from ignoring that case (commit 4e8980c), so the
+-- branch is deliberate, not defensive noise.
 function TwoManCrew.getAllPlayers()
 	local result = {}
 
-	if isServer() then
+	-- Any multiplayer context, either side of the connection. NOT isServer()
+	-- alone: that is false on a listen/co-op host and on every remote client,
+	-- both of which would then fall through to the split-screen branch and
+	-- never see the other player.
+	if isClient() or isServer() then
 		local players = getOnlinePlayers()
 		if players then
 			for i = 0, players:size() - 1 do
@@ -371,6 +377,9 @@ function getSpecificPlayer(index) end
 
 - [ ] **Step 9: Bump modversion to 0.1.3 in both files and commit**
 
+Note: the listen-host correction landed as a second commit and took 0.1.4, so Task 0 consumed
+both slots. Task 1 starts at 0.1.5 and every later task shifts up by one accordingly.
+
 Note this takes the 0.1.3 slot; every later task in this plan shifts up by one. Confirm both files
 match:
 
@@ -506,7 +515,7 @@ function IsoWindow:isGlassRemoved() end
 
 - [ ] **Step 4: Bump modversion in both files**
 
-Set `modversion=0.1.4` in both `mod.info` files, then confirm they are identical:
+Set `modversion=0.1.5` in both `mod.info` files, then confirm they are identical:
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && echo IDENTICAL
@@ -664,7 +673,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.5 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.6 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1120,7 +1129,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 9: Bump modversion to 0.1.6 in both files and commit**
+- [ ] **Step 9: Bump modversion to 0.1.7 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1443,7 +1452,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 8: Bump modversion to 0.1.7 in both files and commit**
+- [ ] **Step 8: Bump modversion to 0.1.8 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1543,7 +1552,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 5: Bump modversion to 0.1.8 in both files and commit**
+- [ ] **Step 5: Bump modversion to 0.1.9 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1761,7 +1770,7 @@ function SFeedingTroughSystem:getLuaObjectCount() end
 function SFeedingTroughSystem:getLuaObjectByIndex(index) end
 ```
 
-- [ ] **Step 7: Bump modversion to 0.1.9 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.10 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -1956,7 +1965,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.10 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.11 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2133,7 +2142,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.11 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.12 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2238,7 +2247,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 6: Bump modversion to 0.1.12 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.13 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Tiers.lua two-man-crew/GOALS.md two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2395,7 +2404,7 @@ add the stub to `types/pz.lua` rather than silencing it:
 function ISScrollingListBox:setFont(font, padY) end
 ```
 
-- [ ] **Step 6: Bump modversion to 0.1.13 in both files and commit**
+- [ ] **Step 6: Bump modversion to 0.1.14 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/42/media/lua/server/TwoManCrew/TwoManCrew_Restoration.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2514,7 +2523,7 @@ cd "d:/Dropbox/Apps/Project Zomboid" && "C:/Users/ionut/.vscode/extensions/sumne
 
 Expected: `Diagnosis completed, no problems found`.
 
-- [ ] **Step 7: Bump modversion to 0.1.14 in both files and commit**
+- [ ] **Step 7: Bump modversion to 0.1.15 in both files and commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
@@ -2553,13 +2562,13 @@ cd "d:/Dropbox/Apps/Project Zomboid" && npx prettier --check "*.md" "docs/*.md" 
 
 Expected: `All matched files use Prettier code style!`
 
-- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.14**
+- [ ] **Step 2: Confirm both mod.info files agree and read 0.1.15**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && diff two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info && grep modversion two-man-crew/Contents/mods/TwoManCrew/mod.info
 ```
 
-Expected: no diff output, then `modversion=0.1.14`.
+Expected: no diff output, then `modversion=0.1.15`.
 
 - [ ] **Step 3: Confirm no Claude attribution entered any commit**
 

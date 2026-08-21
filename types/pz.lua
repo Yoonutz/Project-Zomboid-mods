@@ -38,10 +38,14 @@ function getPlayer(index) end
 ---@return any
 function getSpecificPlayer(index) end
 
---- Dedicated-server only: the Java-backed list of connected players
---- (:size() / :get(i), 0-indexed). Verified in the installed source at
+--- The Java-backed list of connected players (:size() / :get(i), 0-indexed).
+--- Available in ANY multiplayer context, host and client alike - not
+--- dedicated-server only. Verified client-side at client/Chat/ISChat.lua:560
+--- and client/DebugUIs/ISTriggerThunderUI.lua:13, shared at
+--- shared/RadioCom/ISRadioInteractions.lua:263, server-side at
 --- server/Foraging/forageServer.lua:463, server/XpSystem/XpUpdate.lua:300,
---- server/ClientCommands.lua:628.
+--- server/ClientCommands.lua:628. Singleplayer has no online list; use
+--- getNumActivePlayers() + getSpecificPlayer() there.
 ---@return any
 function getOnlinePlayers() end
 
