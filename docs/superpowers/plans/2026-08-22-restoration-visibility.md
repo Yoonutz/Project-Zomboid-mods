@@ -378,7 +378,7 @@ function getSpecificPlayer(index) end
 - [ ] **Step 9: Bump modversion to 0.1.3 in both files and commit**
 
 Note: Task 0 shipped as three commits and consumed 0.1.3, 0.1.4 (listen-host correction) and
-0.1.6 (code-review fixes). Task 1 starts at 0.1.6 and every later task shifts up accordingly.
+0.1.5 (code-review fixes). Task 1 starts at 0.1.6 and every later task shifts up accordingly.
 
 Note this takes the 0.1.3 slot; every later task in this plan shifts up by one. Confirm both files
 match:
