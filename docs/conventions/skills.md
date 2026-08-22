@@ -20,6 +20,18 @@ The practical consequences, since several skills below assume otherwise:
   undone, that is what the commit history is for.
 - A plan's status banner names a version and a date, not a branch.
 
+## This repo's own skills
+
+| Skill       | Use it before                                                   |
+| ----------- | --------------------------------------------------------------- |
+| `pz-status` | Reporting anything about what is installed or what the log says |
+
+`pz-status` replaced five hand-run commands. Use it rather than re-deriving the
+same checks: it hashes every file instead of trusting a version number, and it
+warns when the newest log has gone quiet while the game is still running. That
+second guard exists because reading a finished session's log once produced a
+confidently wrong answer here.
+
 ## Before writing code
 
 - `superpowers:brainstorming` — before any new mod, new UI surface, or behaviour
