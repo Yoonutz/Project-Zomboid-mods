@@ -6,6 +6,11 @@ what each one actually is, how current it is, and when to reach for it.
 Companion files: `luadocs-wiki-note.md` (why the PZwiki LuaDocs page itself is
 stale), `lua-api-wiki.md`, `lua-events-reference.md`.
 
+**Scope note.** Every source below documents the _game's_ API. For the **base
+Lua language** — syntax, standard library, what is 5.1 versus 5.2+ — see
+`lua-language-reference.md`. PZ runs Lua **5.1**, so the current lua.org manual
+is the wrong one.
+
 ## Access note — two of these block the fetch tool
 
 `pzwiki.net` and `projectzomboid.com` both return **HTTP 403** to the default
@@ -88,6 +93,7 @@ this repo already vendors a newer B42-targeted guide at
 
 | Question                                            | Source                                     |
 | --------------------------------------------------- | ------------------------------------------ |
+| Base Lua syntax or standard library (5.1)           | `lua-language-reference.md`                |
 | Exact Java method signature exposed to Lua          | 1, official JavaDocs                       |
 | Lua events, callbacks, class-to-source-file mapping | LuaDocs, see `luadocs-wiki-note.md`        |
 | Item/recipe script fields, distributions, tiles     | 2, PZ-API-Docs generated site              |

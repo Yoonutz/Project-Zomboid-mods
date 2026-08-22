@@ -10,6 +10,10 @@
   current API reference — the PZwiki `LuaDocs` page itself is stale, see
   `docs/luadocs-wiki-note.md`). Add newly-verified facts to `docs/` as they're
   confirmed rather than re-deriving them each time.
+  The game runs **Lua 5.1** (Kahlua), so base-language questions go to the 5.1
+  manual, never the current one — `docs/lua-language-reference.md` has the link
+  and lists the 5.2+ features (`goto`, `table.unpack`, `//`, bitwise ops) that
+  do not exist here.
   `docs/api-documentation-sources.md` ranks every external doc source — which
   is current, which is archived, and the browser User-Agent needed to fetch
   `pzwiki.net` and `projectzomboid.com` (both 403 the default fetch agent).
@@ -19,6 +23,9 @@
 - No in-game testing happens automatically in this environment. Any change to
   a `.txt` script or `.lua` file is a syntax-level claim only until it's been
   loaded in PZ and checked against `~/Zomboid/Logs/` for parse errors.
+  The CURRENT session's log sits at the `~/Zomboid/Logs/` root, not in the
+  dated `logs_<date>/` subfolder (those hold only earlier sessions), so read
+  it with `ls -t ~/Zomboid/Logs/*.txt | head` and tail that file directly.
 - Any change to a mod's behaviour bumps `modversion` in that mod's `mod.info`
   in the SAME commit - patch for fixes, minor for new behaviour or assets.
   TwoManCrew has two `mod.info` files (`Contents/mods/TwoManCrew/mod.info` and
@@ -56,3 +63,16 @@
   working tree, extract it from its commit
   (`git archive <commit> two-man-crew/Contents/mods/TwoManCrew`) and copy
   from there — never `git checkout` an old version over the working tree.
+
+## Project memory
+
+This repo's memories live in `.claude/memory/`, indexed by `.claude/memory/MEMORY.md`,
+and are versioned with the code so they travel with a clone. They used to sit outside
+the repo in the user profile, where they were invisible to anyone else and to a fresh
+checkout.
+
+An index line is a pointer — read the memory file before acting on its topic. Global
+cross-project memories in `~/.claude/memories/` still apply on top of these; the two
+stores are consulted, never merged.
+
+@.claude/memory/MEMORY.md
