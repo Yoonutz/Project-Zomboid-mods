@@ -169,6 +169,26 @@ function TwoManCrewJournalWindow:createChildren()
 	self.list:setFont(UIFont.NewSmall, 1)
 	self.list.selected = -1
 	self.list.drawBorder = true
+
+	-- Cards are painted by this window, not by the stock row renderer, and a
+	-- click has to reach the card it landed on. Both are engine hooks:
+	-- ISScrollingListBox.lua:304 for the draw, :277 for the click.
+	--
+	-- Rows carrying a plain string (the "no claim yet" placeholders) still fall
+	-- through to the stock renderer, so an empty state cannot break the panel.
+	local window = self
+	self.list.doDrawItem = function(listSelf, y, item, alt)
+		if item and item.item and item.item.checks then
+			return window.drawCard(window, y, item, alt)
+		end
+		return ISScrollingListBox.doDrawItem(listSelf, y, item, alt)
+	end
+
+	self.list:setOnMouseDownFunction(self, function(target, item)
+		if item and item.checks then
+			target:onCardClicked(item)
+		end
+	end)
 	self:addChild(self.list)
 
 	-- Icon buttons rather than three wide text buttons. The labels were the
@@ -312,6 +332,7 @@ function TwoManCrewJournalWindow:onRefresh()
 	-- explicit press always repaint.
 	self.lastSeenReport = nil
 	self.lastSeenTierProgress = nil
+	self.cards = nil
 	self.lastSeenClaimDetail = nil
 end
 
@@ -381,6 +402,7 @@ function TwoManCrewJournalWindow:onToggleView()
 
 	self.lastSeenReport = nil
 	self.lastSeenTierProgress = nil
+	self.cards = nil
 	self.lastSeenClaimDetail = nil
 end
 
@@ -406,67 +428,6 @@ function TwoManCrewJournalWindow:populateJournal()
 	end
 end
 
--- Reads a single stage/tier's completion state out of whatever shape the
--- server sent, trying several plausible field names since the Tiers module
--- (server) was written by another agent concurrently and its final schema
--- was not visible from here. Returns true/false/nil (nil = unknown).
---
--- Tried, in order, against a per-tier entry the progress table might expose
--- keyed by the tier's key (e.g. progress.tiers.tier1 or progress.tier1):
---   .done / .complete / .completed (booleans)
--- Falls back to comparing progress.currentTier/.tier/.current (a number or
--- the tier key itself) against this tier's index/key, on the assumption a
--- lower/earlier tier than "current" is done.
-local function isStageDone(progress, tierIndex, tierKey, containerKey)
-	if not progress then return nil end
-
-	local container = progress[containerKey]
-	local entry = nil
-	if type(container) == "table" then
-		entry = container[tierKey] or container[tierIndex]
-	end
-	if not entry then
-		entry = progress[tierKey]
-	end
-
-	if type(entry) == "table" then
-		if entry.done ~= nil then return entry.done and true or false end
-		if entry.complete ~= nil then return entry.complete and true or false end
-		if entry.completed ~= nil then return entry.completed and true or false end
-	elseif type(entry) == "boolean" then
-		return entry
-	end
-
-	-- The real shape TwoManCrew_Tiers.lua returns: a highest-reached number per
-	-- track, named buildingTier / livestockStage. That module was written in
-	-- parallel with this one, so the generic probes above were speculative and
-	-- never matched it - every row rendered unknown. These two lines are the
-	-- ones that actually fire.
-	local reached
-	if containerKey == "livestock" then
-		reached = progress.livestockStage
-	else
-		reached = progress.buildingTier
-	end
-	if type(reached) == "number" then
-		return tierIndex <= reached
-	end
-
-	local current = progress.currentTier or progress.currentStage or progress.tier or progress.current
-	if type(current) == "number" then
-		return tierIndex < current
-	end
-	if type(current) == "string" then
-		if current == tierKey then return false end
-	end
-
-	return nil
-end
-
--- Renders campaign progress: the five building tiers and four livestock
--- stages from GOALS.md, each marked done/current/unknown from whatever the
--- server sent. Every field read is optional - a bare-bones or absent Tiers
--- module still produces a readable (if sparse) list rather than an error.
 -- Spine and task colour, by card state.
 local STATE_COLOUR = {
 	active  = SKIN.active,
@@ -601,6 +562,20 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 	return top + height
 end
 
+-- Names the stage a card belongs to, for the context line under the ladder.
+--
+-- "Tier 3 of 5" says where you are; "Tier 3 of 5 - Half the Block" says what
+-- you are doing. Names come from the display tables at the top of this file, so
+-- a missing or out-of-range index degrades to the bare position, never to nil.
+local function tierLabel(names, index, word)
+	local position = word .. " " .. tostring(index or 0) .. " of " .. #names
+	local entry = index and names[index]
+	if entry and entry.label then
+		return position .. " - " .. entry.label
+	end
+	return position
+end
+
 -- Turns the two server payloads the client already holds into task cards.
 --
 -- Pure by design: no getCell, no getPlayer, no drawing, no engine global at
@@ -648,7 +623,7 @@ function TwoManCrewJournalWindow.buildCards(progress, detail)
 			key = "building",
 			track = "building",
 			task = progress.buildingRemaining,
-			context = "Tier " .. tostring(progress.buildingTier or 0) .. " of 5",
+			context = tierLabel(BUILDING_TIERS, progress.buildingTier, "Tier"),
 			state = blocked and "blocked" or "active",
 			done = done,
 			target = #checks,
@@ -693,7 +668,7 @@ function TwoManCrewJournalWindow.buildCards(progress, detail)
 			key = "livestock",
 			track = "livestock",
 			task = progress.livestockRemaining,
-			context = "Stage " .. tostring(progress.livestockStage or 0) .. " of 4",
+			context = tierLabel(LIVESTOCK_STAGES, progress.livestockStage, "Stage"),
 			state = failed and "blocked" or "active",
 			done = done,
 			target = #checks,
@@ -705,9 +680,32 @@ function TwoManCrewJournalWindow.buildCards(progress, detail)
 	return cards
 end
 
+-- Toggles a card open or shut, then rebuilds the list.
+--
+-- The scroll offset is captured and restored around the rebuild, because
+-- clearing a list resets its scroll. Without this, opening the last card would
+-- jump the view back to the top and hide the very thing just clicked.
+function TwoManCrewJournalWindow:onCardClicked(card)
+	if not card or card.expanded == nil then return end
+	card.expanded = not card.expanded
+
+	local offset = self.list.yScroll or 0
+	self:populateCampaign()
+	self.list.yScroll = offset
+end
+
+-- Rebuilds the Orders list from the last server reply.
+--
+-- Everything the old flat version printed is still shown, but as structure
+-- rather than as nineteen equal rows: the task is the card's headline, the
+-- census numbers are the checks inside it, and the tier name is the context
+-- line under the ladder. The two "Next:" hints that used to render last, below
+-- the diagnostics, are now the headline of the only two cards that matter.
 function TwoManCrewJournalWindow:populateCampaign()
 	local progress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
 	local received = TwoManCrew.Client and TwoManCrew.Client.tierProgressReceived
+	local detail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+
 	self.list:clear()
 
 	if not received then
@@ -715,91 +713,24 @@ function TwoManCrewJournalWindow:populateCampaign()
 		return
 	end
 	if not progress then
-		self.list:addItem("Campaign progress unavailable - no claim yet, or the server has no data.", nil)
+		self.list:addItem("No claim yet - press the flag button to claim a block.", nil)
 		return
 	end
 
-	self.list:addItem("-- Building tiers --", nil)
-	for i, tier in ipairs(BUILDING_TIERS) do
-		local done = isStageDone(progress, i, tier.key, "tiers")
-		local mark = "?"
-		if done == true then mark = "DONE" elseif done == false then mark = "..." end
-		self.list:addItem(string.format("[%s] Tier %d: %s", mark, i, tier.label), tier)
+	-- Rebuilt only when absent, so an open card stays open across a redraw.
+	-- Fresh server data clears self.cards, which is what forces a rebuild.
+	if not self.cards then
+		self.cards = TwoManCrewJournalWindow.buildCards(progress, detail)
 	end
 
-	self.list:addItem("-- Livestock stages --", nil)
-	for i, stage in ipairs(LIVESTOCK_STAGES) do
-		local done = isStageDone(progress, i, stage.key, "livestock")
-		local mark = "?"
-		if done == true then mark = "DONE" elseif done == false then mark = "..." end
-		self.list:addItem(string.format("[%s] %s: %s", mark, stage.key, stage.label), stage)
+	if #self.cards == 0 then
+		self.list:addItem("Every objective is complete. Hold the block.", nil)
+		return
 	end
 
-	-- What the last census actually saw. Without this a stage reads as
-	-- incomplete with no way to tell "saw zero animals" from "could not look".
-	if type(progress.censusAnimals) == "number" then
-		local line = string.format(
-			"Last count: %d animals (%d young)",
-			progress.censusAnimals, progress.censusBabies or 0
-		)
-		self.list:addItem(line, nil)
-	end
-
-	if type(progress.censusTroughs) == "number" then
-		self.list:addItem(
-			string.format("Feeding troughs on the block: %d", progress.censusTroughs),
-			nil
-		)
-	elseif progress.censusAnimals ~= nil then
-		self.list:addItem("Feeding troughs: could not read", nil)
-	end
-
-	if type(progress.censusHutches) == "number" then
-		self.list:addItem(
-			string.format("Occupied hutches seen: %d", progress.censusHutches),
-			nil
-		)
-	end
-
-	if type(progress.herdNightsDone) == "number"
-		and type(progress.herdNightsNeeded) == "number"
-	then
-		self.list:addItem(
-			string.format(
-				"Herd held: %d of %d nights",
-				progress.herdNightsDone, progress.herdNightsNeeded
-			),
-			nil
-		)
-	end
-
-	-- Tier 5's hold countdown. Only present once every building is restored.
-	if type(progress.holdNightsDone) == "number"
-		and type(progress.holdNightsNeeded) == "number"
-	then
-		self.list:addItem(
-			string.format(
-				"Holding the block: %d of %d nights",
-				progress.holdNightsDone, progress.holdNightsNeeded
-			),
-			nil
-		)
-	end
-
-	-- What is left to do next, per track. TwoManCrew_Tiers.lua sends these as
-	-- buildingRemaining and livestockRemaining; the generic names below were
-	-- guessed before that module existed and never matched, so the hint never
-	-- appeared. Both are shown because the two tracks advance independently.
-	if type(progress.buildingRemaining) == "string" and progress.buildingRemaining ~= "" then
-		self.list:addItem("Next: " .. progress.buildingRemaining, nil)
-	end
-	if type(progress.livestockRemaining) == "string" and progress.livestockRemaining ~= "" then
-		self.list:addItem("Next: " .. progress.livestockRemaining, nil)
-	end
-
-	local remaining = progress.remaining or progress.remainingText or progress.summary
-	if type(remaining) == "string" and remaining ~= "" then
-		self.list:addItem("-- " .. remaining, nil)
+	for _, card in ipairs(self.cards) do
+		local row = self.list:addItem(card.task, card)
+		if row then row.height = self:cardHeight(card) end
 	end
 end
 
