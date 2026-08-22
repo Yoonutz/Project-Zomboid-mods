@@ -36,9 +36,6 @@ require "TwoManCrew/TwoManCrew_PanelPrefs"
 
 TwoManCrewPanel = ISUIElement:derive("TwoManCrewPanel")
 
-local PAD = 6
-local LINE = 16
-local WIDTH = 190
 
 -- Size of the badge when the widget is collapsed to just its icon. Bigger
 -- than the 16px title-bar variant, because collapsed it is the only thing
@@ -64,11 +61,6 @@ function TwoManCrewPanel:new(x, y, width, height)
 	o.pressed = false
 	o.canDrag = false
 	o.dragMoved = false
-	-- True while the widget is showing its full text rather than just the
-	-- badge. Driven by hover in prerender, forced on by the alwaysExpanded
-	-- preference, and forced on while a drag is in progress so the thing
-	-- being dragged does not change size under the cursor.
-	o.expanded = false
 	---@type table<string, number>|nil
 	o.tally = nil
 	--- Newest journal entry from the server's crewReport reply, or nil before
@@ -127,143 +119,54 @@ end
 -- whole status read at a glance - green means the partner is beside you, grey
 -- means working alone - so it is drawn last and sits proud of the badge's
 -- bottom-right corner rather than inside it.
-function TwoManCrewPanel:renderCollapsed(scale)
-	local size = math.floor(BADGE * scale)
-
+-- Draws the badge. That is the entire widget.
+--
+-- There used to be a hover state that expanded this into a text plate with the
+-- partner, the crew tally and the latest journal line. It is gone at the
+-- player's request: "Remove any hoover effect. Just let me click on the button
+-- and open the journal."
+--
+-- Everything that plate showed is in the journal, one click away, which is
+-- where someone actually reads it.
+function TwoManCrewPanel:renderBadge(w, h)
 	if self.badge then
-		self:drawTextureScaled(self.badge, 0, 0, size, size, 1, 1, 1, 1)
+		self:drawTextureScaled(self.badge, 0, 0, w, h, 1, 1, 1, 1)
 	else
 		-- No texture: fall back to a readable label rather than an empty
 		-- widget the player cannot find or click.
 		self:drawText("CREW", 0, 0, 0.85, 0.85, 0.85, 1, UIFont.Small)
 	end
 
-	local dot = math.max(4, math.floor(6 * scale))
-	local dx = size - dot
-	local dy = size - dot
+	-- No partner indicator. There used to be a small coloured square in the
+	-- corner here, and the verdict on it was "remove the square for good".
+	--
+	-- Nothing is lost that is not said better elsewhere: hovering the badge
+	-- already spells out "working alone" or the partner's name in words, which
+	-- is legible in a way a six-pixel dot never was.
 
-	-- Dark ring first, coloured dot inside it, so the indicator stays legible
-	-- against both a bright road and a dark interior. Two rects is cheaper
-	-- than shipping another texture for a six-pixel dot.
-	self:drawRect(dx - 1, dy - 1, dot + 2, dot + 2, 0.85, 0.05, 0.04, 0.03)
-	if self.partnerName then
-		self:drawRect(dx, dy, dot, dot, 1, 0.43, 0.69, 0.37)
-	else
-		self:drawRect(dx, dy, dot, dot, 1, 0.45, 0.45, 0.45)
-	end
 end
 
 -- Expanded: the badge on the header row and the full status text, over a
 -- backing plate. The plate is drawn here and only here, which is what keeps
 -- the collapsed widget free of the box the player asked to be rid of.
-function TwoManCrewPanel:renderExpanded(scale, pad, line)
-	self:drawRect(0, 0, self.width, self.height, 0.55, 0.0, 0.0, 0.0)
-
-	local y = pad
-
-	-- Badge sits on the header row and scales with the panel, so the widget
-	-- stays one piece at every size. The label shifts right by the badge width
-	-- only when the badge actually drew; a missing texture leaves the original
-	-- flush-left layout rather than an empty gap.
-	local labelX = pad
-	if self.badge then
-		local badgeSize = line - 2
-		self:drawTextureScaled(self.badge, pad, y, badgeSize, badgeSize, 1, 1, 1, 1)
-		labelX = pad + badgeSize + math.floor(4 * scale)
-	end
-
-	self:drawText("CREW", labelX, y, 0.85, 0.85, 0.85, 1, UIFont.Small)
-	y = y + line
-
-	-- Danger is not decided here: WatchMyBack owns that end-to-end via the
-	-- server and delivers it as halo text, so this line only shows presence.
-	if self.partnerName then
-		self:drawText(self.partnerName .. " - nearby", pad, y, 0.5, 0.9, 0.5, 1, UIFont.Small)
-	else
-		self:drawText("working alone", pad, y, 0.6, 0.6, 0.6, 1, UIFont.Small)
-	end
-	y = y + line
-
-	if self.showTally ~= false and self.tally then
-		local total = 0
-		for _, n in pairs(self.tally) do
-			total = total + n
-		end
-		self:drawText("crew deeds: " .. total, pad, y, 0.8, 0.8, 0.7, 1, UIFont.Small)
-		y = y + line
-	end
-
-	-- Read the entry into a local before touching its fields, so the non-nil
-	-- guarantee is visible at the point of use rather than several lines above.
-	local entry = self.lastJournal
-	if self.showJournal ~= false and entry and entry.text then
-		local text = entry.text
-		-- Wider panel fits more text, so the truncation point follows scale.
-		local maxChars = math.floor(28 * scale)
-		if #text > maxChars then text = string.sub(text, 1, maxChars - 1) .. "..." end
-		self:drawText(text, pad, y, 0.65, 0.65, 0.6, 1, UIFont.Small)
-	end
-end
-
 function TwoManCrewPanel:prerender()
-	self.refreshTimer = self.refreshTimer - UIManager.getMillisSinceLastRender()
-	if self.refreshTimer <= 0 then
-		self.refreshTimer = REFRESH_MS
-		self:refresh()
-		self:pullCachedReport()
-	end
+	local prefs = TwoManCrew.Prefs.get()
+	local w = prefs.badgeW or 32
+	local h = prefs.badgeH or 32
 
-	-- Scale multiplies the row height and padding so the whole widget grows,
-	-- rather than only the box. Font stays vanilla-sized: PZ exposes a fixed
-	-- set of UIFont values, so text cannot scale continuously.
-	local scale = self.scale or 1.0
-	local pad = math.floor(PAD * scale)
-	local line = math.floor(LINE * scale)
-
-	-- The element's SIZE never changes. Only what is drawn inside it does.
+	-- The widget IS the badge now, so the hitbox is the icon.
 	--
-	-- This is the whole fix for three separate bugs, and the reason the size
-	-- is not recomputed per frame any more. Mouse hit-testing is done by the
-	-- Java object, and the Java object only learns a new size through
-	-- setWidth()/setHeight() (ISUIElement.lua:1136-1160, which forward to
-	-- javaObject:setWidth/setHeight). Assigning self.width directly - which
-	-- is what this function used to do on every frame - updates the Lua field
-	-- that drawing reads while leaving Java's hitbox at whatever it was when
-	-- the element was added to the UIManager.
+	-- It used to stay permanently at the width the hover plate needed, which
+	-- left a large invisible rectangle that opened the journal when clicked. The
+	-- fixed size existed to stop the panel oscillating as the pointer crossed
+	-- its edge while expanding; with no expansion there is nothing to oscillate.
 	--
-	-- With the widget starting collapsed, that stale hitbox was the 22px
-	-- badge, permanently. Everything followed from that:
-	--   - the expanded panel could not be clicked outside its top-left corner,
-	--   - dragging "snapped out" the moment the pointer left those 22px,
-	--     because PZ then delivered onMouseUpOutside and killed the drag,
-	--   - and "Always show text" made it permanent rather than intermittent.
-	--
-	-- Keeping one fixed hitbox at the expanded size means Lua and Java can
-	-- never disagree. The cost is that the collapsed badge reserves the full
-	-- rectangle; that is invisible (nothing is painted there) and is worth far
-	-- more than a pixel-tight hitbox that does not work.
-	local lines = 2
-	if self.showTally ~= false and self.tally then lines = lines + 1 end
-	if self.showJournal ~= false and self.lastJournal then lines = lines + 1 end
+	-- Size still goes through the setters, never the raw fields: PZ hit-tests
+	-- against the Java object and only these reach it.
+	if self.width ~= w then self:setWidth(w) end
+	if self.height ~= h then self:setHeight(h) end
 
-	local wantWidth = math.floor(WIDTH * scale)
-	local wantHeight = pad * 2 + line * lines
-
-	-- Go through the setters, and only when the value actually changed, so
-	-- Java is kept in step without a redundant call every frame.
-	if self.width ~= wantWidth then self:setWidth(wantWidth) end
-	if self.height ~= wantHeight then self:setHeight(wantHeight) end
-
-	-- Hover now decides only what is PAINTED. isMouseOver() is the Java-backed
-	-- base implementation (ISUIElement.lua:414) and is honest again now that
-	-- the Java rectangle matches the real one.
-	self.expanded = self.alwaysExpanded == true or self.pressed or self:isMouseOver()
-
-	if self.expanded then
-		self:renderExpanded(scale, pad, line)
-	else
-		self:renderCollapsed(scale)
-	end
+	self:renderBadge(w, h)
 end
 
 function TwoManCrewPanel:initialise()
@@ -387,6 +290,29 @@ end
 -- Right click opens the settings menu: scale, what to show, lock, reset.
 -- Pattern copied from vanilla's own HUD context menu (client/Chat/ISChat.lua:246
 -- ISContextMenu.get + addOption + getNew/addSubMenu).
+-- Wheel over the badge zooms it, with no step list and no maximum.
+--
+-- Plain wheel scales both axes together. Shift stretches width only, Ctrl
+-- height only, so the icon can be shaped as well as sized.
+--
+-- Returning true consumes the event: without it the wheel would also scroll
+-- whatever sits behind the badge.
+function TwoManCrewPanel:onMouseWheel(del)
+	-- del is -1 or 1. A multiplier rather than a fixed pixel step, so the badge
+	-- grows at the same visual rate whether it is tiny or huge.
+	local factor = del < 0 and 1.1 or (1 / 1.1)
+
+	local fw, fh = factor, factor
+	if isShiftKeyDown() then
+		fh = 1
+	elseif isCtrlKeyDown() then
+		fw = 1
+	end
+
+	TwoManCrew.Prefs.zoomBadge(getPlayer(), fw, fh)
+	return true
+end
+
 function TwoManCrewPanel:onRightMouseDown(x, y)
 	local player = getPlayer()
 	if not player then return true end
@@ -398,28 +324,9 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	-- arithmetic to find out whether it was bigger than what they had; "3" does
 	-- not. This one setting drives the badge, the journal window and the
 	-- journal's buttons together, so picking a size here changes all of them.
-	local sizeOption = context:addOption("Size", self)
-	local sizeMenu = context:getNew(context)
-	context:addSubMenu(sizeOption, sizeMenu)
-	-- Badge size only. The journal window has its own, set from its own menu,
-	-- because one number driving both was the "zoom linked to everything"
-	-- complaint. Each step pairs a font with matching chrome, so text and boxes
-	-- grow together instead of drifting apart.
-	for i = 1, #TwoManCrew.Prefs.SIZES do
-		local opt = sizeMenu:addOption(tostring(i), self, TwoManCrewPanel.onSetScale, i)
-		if i == (prefs.badgeStep or 1) then
-			sizeMenu:setOptionChecked(opt, true)
-		end
-	end
-
-	local expandOpt = context:addOption("Always show text", self, TwoManCrewPanel.onToggle, "alwaysExpanded")
-	context:setOptionChecked(expandOpt, prefs.alwaysExpanded)
-
-	local tallyOpt = context:addOption("Show crew deeds", self, TwoManCrewPanel.onToggle, "showTally")
-	context:setOptionChecked(tallyOpt, prefs.showTally)
-
-	local journalOpt = context:addOption("Show latest journal line", self, TwoManCrewPanel.onToggle, "showJournal")
-	context:setOptionChecked(journalOpt, prefs.showJournal)
+	-- No size submenu. The wheel does it, continuously and without a ceiling,
+	-- which is what a fixed list of numbers could never offer.
+	context:addOption("Reset icon size", self, TwoManCrewPanel.onResetBadgeSize)
 
 	local lockOpt = context:addOption("Lock position", self, TwoManCrewPanel.onToggle, "locked")
 	context:setOptionChecked(lockOpt, prefs.locked)
@@ -429,9 +336,10 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	return true
 end
 
-function TwoManCrewPanel:onSetScale(step)
-	TwoManCrew.Prefs.setBadgeStep(getPlayer(), step)
-	self:applyPrefs()
+function TwoManCrewPanel:onResetBadgeSize()
+	local prefs = TwoManCrew.Prefs.get(getPlayer())
+	prefs.badgeW = 32
+	prefs.badgeH = 32
 end
 
 function TwoManCrewPanel:onToggle(field)
@@ -449,17 +357,14 @@ end
 -- Pushes saved preferences onto the live element. Called on setup and after any
 -- menu change, so the panel reflects a choice immediately.
 --
--- Width is NOT set here any more: prerender owns it, because it differs
--- between the collapsed badge and the expanded plate and changes on hover.
--- Setting it here too would have the two fight for a frame on every toggle.
+-- Size is NOT applied here: prerender reads the stored pixels every frame, so
+-- a wheel notch shows up immediately without this having to run.
+--
+-- Nothing else is cached onto self any more. The three fields that used to be
+-- (crew deeds, latest journal line, always-expanded) all configured the hover
+-- plate, and that is gone.
 function TwoManCrewPanel:applyPrefs()
-	local prefs = TwoManCrew.Prefs.get(getPlayer())
-
-	local _, chrome = TwoManCrew.Prefs.size(prefs.badgeStep)
-	self.scale = chrome
-	self.showTally = prefs.showTally
-	self.showJournal = prefs.showJournal
-	self.alwaysExpanded = prefs.alwaysExpanded
+	TwoManCrew.Prefs.get(getPlayer())
 end
 
 TwoManCrewPanel.setup = function()
@@ -467,14 +372,11 @@ TwoManCrewPanel.setup = function()
 
 	-- Restore where the player last left it. Defaults put it top-left under the
 	-- vanilla HUD, clear of the moodle stack on the right.
-	-- Created at the FULL size, not the collapsed badge size. The element's
-	-- rectangle is fixed now (see prerender), and the size handed to :new is
-	-- the one the Java object is built with when addToUIManager runs - so
-	-- starting small would hand Java a hitbox the widget never uses again.
+	-- Created at the stored badge size. prerender keeps it in step from there,
+	-- through the setters, which is what reaches the Java hitbox.
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
-	local _, scale = TwoManCrew.Prefs.size(prefs.badgeStep)
-	local startWidth = math.floor(WIDTH * scale)
-	local startHeight = math.floor(PAD * scale) * 2 + math.floor(LINE * scale) * 2
+	local startWidth = prefs.badgeW or 32
+	local startHeight = prefs.badgeH or 32
 	TwoManCrew.Prefs.clampToScreen(prefs, startWidth, startHeight)
 
 	local panel = TwoManCrewPanel:new(prefs.x, prefs.y, startWidth, startHeight)

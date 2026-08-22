@@ -320,6 +320,13 @@ ISToolTip = {}
 ---@vararg any
 function triggerEvent(event, ...) end
 
+--- Modifier key state. Used bare throughout vanilla, e.g.
+--- client/DebugUIs/SeamEditor/SeamEditorUI_TileList.lua:17-19.
+---@return boolean
+function isShiftKeyDown() end
+---@return boolean
+function isCtrlKeyDown() end
+
 --- Timed actions -----------------------------------------------------------
 --- Mods wrap these (save the original, replace the method, call through), so
 --- they are `any`: the language server must accept both reading the existing

@@ -34,17 +34,25 @@ local DEFAULTS = {
 	-- Do NOT merge these back to remove the duplication. The duplication is the
 	-- feature, and merging them is the single most likely way to reintroduce the
 	-- complaint.
-	badgeStep = 2,
+	-- Badge size in PIXELS, width and height independently, set by the wheel
+	-- rather than picked from a list.
+	--
+	-- It used to be one step out of a fixed table, and the verdict on that was
+	-- "incremental zoom on all axis, infinite, not just some hardcoded values".
+	-- So there is no table and no ceiling: the wheel multiplies, and it keeps
+	-- going until the badge fills the screen.
+	--
+	-- The floor exists because a badge smaller than this cannot be hit, and a
+	-- control the player cannot click back is not a size, it is a trap.
+	badgeW = 32,
+	badgeH = 32,
 	journalStep = 2,
-	showTally = true,
-	showJournal = true,
 	locked = false,
 	-- When false (the default) the widget is just its badge until the mouse
 	-- is over it. The panel used to be a permanent dark rectangle sitting on
 	-- the HUD; collapsing it to the icon is what stops it reading as a debug
 	-- overlay. Players who would rather keep the text on screen at all times
 	-- set this from the right-click menu.
-	alwaysExpanded = false,
 }
 
 -- Scale steps offered in the right-click menu. Kept coarse: a slider in a
@@ -105,8 +113,9 @@ function TwoManCrew.Prefs.migrate(prefs)
 		end
 	end
 
-	prefs.badgeStep = prefs.badgeStep or best
 	prefs.journalStep = prefs.journalStep or best
+	prefs.badgeW = prefs.badgeW or math.floor(22 * prefs.scale + 0.5)
+	prefs.badgeH = prefs.badgeH or math.floor(22 * prefs.scale + 0.5)
 	prefs.scale = nil
 	return prefs
 end
@@ -159,9 +168,36 @@ function TwoManCrew.Prefs.setPosition(player, x, y)
 end
 
 
-function TwoManCrew.Prefs.setBadgeStep(player, step)
+-- Multiplies the badge towards a target size. Free-form, so there is no step
+-- list and no maximum - only a floor small enough to stay clickable and a
+-- ceiling of the screen itself, because a badge larger than the screen cannot
+-- be reached to shrink again.
+--
+-- Width and height move independently so the player can stretch either axis.
+function TwoManCrew.Prefs.zoomBadge(player, factorW, factorH)
 	local prefs = TwoManCrew.Prefs.get(player)
-	prefs.badgeStep = step
+
+	local minSize = 12
+	local maxW = getCore():getScreenWidth()
+	local maxH = getCore():getScreenHeight()
+
+	local w = (prefs.badgeW or 32) * (factorW or 1)
+	local h = (prefs.badgeH or 32) * (factorH or 1)
+
+	-- Round away from the current value, so a small badge still grows by at
+	-- least a pixel per notch instead of rounding back to where it started.
+	w = math.floor(w + 0.5)
+	h = math.floor(h + 0.5)
+	if w == prefs.badgeW and (factorW or 1) > 1 then w = w + 1 end
+	if h == prefs.badgeH and (factorH or 1) > 1 then h = h + 1 end
+
+	if w < minSize then w = minSize end
+	if h < minSize then h = minSize end
+	if w > maxW then w = maxW end
+	if h > maxH then h = maxH end
+
+	prefs.badgeW = w
+	prefs.badgeH = h
 end
 
 function TwoManCrew.Prefs.setJournalStep(player, step)
