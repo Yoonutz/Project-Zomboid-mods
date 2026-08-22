@@ -244,25 +244,20 @@ function TwoManCrewJournalWindow:createChildren()
 	self.tabs:addView("Livestock", self.livestockList)
 	self.tabs:addView("Journal", self.journalList)
 
-	-- Cards are painted by this window, not by the stock row renderer, and a
-	-- click has to reach the card it landed on. Both are engine hooks:
-	-- ISScrollingListBox.lua:304 for the draw, :277 for the click.
-	--
-	-- Rows carrying a plain string (the "no claim yet" placeholders) still fall
+	-- Briefing rows are painted by this window (ISScrollingListBox.lua:304).
+	-- Rows carrying a plain string - the "no claim yet" placeholders - fall
 	-- through to the stock renderer, so an empty state cannot break the panel.
+	--
+	-- Nothing here is clickable. The briefing is read, not operated: it used to
+	-- be cards you clicked open, and needing a click to find out what to do is
+	-- the opposite of the point.
 	local window = self
 	self.list.doDrawItem = function(listSelf, y, item, alt)
-		if item and item.item and item.item.checks then
-			return window.drawCard(window, y, item, alt)
+		if item and item.item and item.item.kind then
+			return window.drawBriefingRow(window, y, item, alt)
 		end
 		return ISScrollingListBox.doDrawItem(listSelf, y, item, alt)
 	end
-
-	self.list:setOnMouseDownFunction(self, function(target, item)
-		if item and item.checks then
-			target:onCardClicked(item)
-		end
-	end)
 
 	-- The Orders list is NOT added to the window. ISTabPanel:addView already
 	-- adopts it (ISTabPanel.lua:484 calls addChild and sets view.parent), and
@@ -447,7 +442,6 @@ function TwoManCrewJournalWindow:onRefresh()
 	-- explicit press always repaint.
 	self.lastSeenReport = nil
 	self.lastSeenTierProgress = nil
-	self.cards = nil
 	self.lastSeenClaimDetail = nil
 end
 
@@ -511,346 +505,274 @@ function TwoManCrewJournalWindow:populateJournal()
 	end
 end
 
--- Spine and task colour, by card state.
-local STATE_COLOUR = {
-	active  = SKIN.active,
-	done    = SKIN.done,
-	blocked = SKIN.blocked,
-	locked  = SKIN.faint,
+-- The Orders briefing.
+--
+-- This replaced a set of click-to-expand cards that printed the database: raw
+-- building ids, world coordinates and an internal work score. The verdict was
+-- "nothing is intuitive for a human, more for a machine", and it was right -
+-- none of those three things is something a player can act on.
+--
+-- What a player needs is where to walk and what to do when they arrive, so
+-- every number is translated before it is shown:
+--   a coordinate pair  -> a direction and a distance from where they stand
+--   a work score       -> a size, because the score is roughly a room count
+--   a status flag      -> a sentence
+--
+-- Nothing here is clickable. It is read top to bottom, in three categories,
+-- each with sub-categories under it.
+
+-- Row kinds, in the order they indent.
+local ROW_HEAD = "head"   -- CATEGORY
+local ROW_SUB = "sub"     -- sub-category
+local ROW_TASK = "task"   -- the thing to actually do
+local ROW_NOTE = "note"   -- why, or what is missing
+local ROW_BAR = "bar"     -- a labelled progress ladder
+local ROW_GAP = "gap"
+
+local INDENT = { head = 0, sub = 10, task = 20, note = 32, bar = 20, gap = 0 }
+
+-- Compass bearing from the crew to a point. PZ's y axis grows southward, so
+-- north is NEGATIVE dy - getting that backwards sends the player the wrong way,
+-- which is worse than showing nothing.
+local function bearing(dx, dy)
+	local ns, ew = "", ""
+	if dy < -8 then ns = "north" elseif dy > 8 then ns = "south" end
+	if dx > 8 then ew = "east" elseif dx < -8 then ew = "west" end
+	if ns == "" and ew == "" then return "right here" end
+	return ns .. ew
+end
+
+-- "90 tiles west", or "right here" when standing on it.
+function TwoManCrewJournalWindow.whereIs(row, px, py)
+	if type(row.x) ~= "number" or type(row.y) ~= "number" then return nil end
+	if type(px) ~= "number" or type(py) ~= "number" then return nil end
+
+	local dx, dy = row.x - px, row.y - py
+	local dist = math.floor(math.sqrt(dx * dx + dy * dy))
+	local where = bearing(dx, dy)
+	if where == "right here" then return "right here" end
+	return dist .. " tiles " .. where
+end
+
+-- The work score is roughly one point per room plus one per large floor span,
+-- so it reads as a size rather than as a number nobody can picture.
+function TwoManCrewJournalWindow.describeSize(units)
+	units = tonumber(units) or 0
+	if units <= 1 then return "shed" end
+	if units <= 3 then return "small house" end
+	if units <= 7 then return "house" end
+	if units <= 14 then return "large house" end
+	return "big building"
+end
+
+-- One building, named the way a person would: size first, then where it is.
+local function nameBuilding(row, px, py)
+	local name = TwoManCrewJournalWindow.describeSize(row.units)
+	local where = TwoManCrewJournalWindow.whereIs(row, px, py)
+	if where then return name .. ", " .. where end
+	return name
+end
+
+-- Builds the whole briefing as a flat list of typed rows.
+--
+-- Pure: takes the two server payloads and the crew's position, returns rows.
+-- No engine call, no drawing, so the wording can be reasoned about on its own.
+function TwoManCrewJournalWindow.buildBriefing(progress, detail, px, py)
+	local rows = {}
+	local function add(kind, text, tone)
+		table.insert(rows, { kind = kind, text = text, tone = tone })
+	end
+
+	progress = progress or {}
+	detail = detail or {}
+
+	-- Sort the buildings that still need work by distance, so the first thing
+	-- named is the one worth walking to.
+	local todo, unreadable, doneCount = {}, {}, 0
+	for _, row in ipairs(detail) do
+		if row.status == "restored" then
+			doneCount = doneCount + 1
+		elseif row.status == "unknown" then
+			table.insert(unreadable, row)
+		else
+			table.insert(todo, row)
+		end
+	end
+
+	local function byDistance(a, b)
+		local function d(r)
+			if type(r.x) ~= "number" or type(px) ~= "number" then return 1e9 end
+			local dx, dy = r.x - px, r.y - py
+			return dx * dx + dy * dy
+		end
+		return d(a) < d(b)
+	end
+	table.sort(todo, byDistance)
+	table.sort(unreadable, byDistance)
+
+	-- ---------------------------------------------------------- DO THIS NOW
+	add(ROW_HEAD, "DO THIS NOW")
+
+	local anything = false
+
+	if #todo > 0 then
+		anything = true
+		add(ROW_SUB, "Buildings")
+		local first = todo[1]
+		add(ROW_TASK, "Restore the " .. nameBuilding(first, px, py))
+		local why = TwoManCrewJournalWindow.describeRow(first)
+		if why then add(ROW_NOTE, why) end
+		if #todo > 1 then
+			add(ROW_NOTE, (#todo - 1) .. " more still need work after that")
+		end
+	elseif type(progress.buildingRemaining) == "string" and progress.buildingRemaining ~= "" then
+		anything = true
+		add(ROW_SUB, "Buildings")
+		add(ROW_TASK, progress.buildingRemaining)
+	end
+
+	if type(progress.livestockRemaining) == "string" and progress.livestockRemaining ~= "" then
+		anything = true
+		add(ROW_SUB, "Livestock")
+		add(ROW_TASK, progress.livestockRemaining)
+
+		-- Say what the census actually saw, in a sentence rather than as four
+		-- separate counters the player has to interpret.
+		local animals = progress.censusAnimals
+		local hutches = progress.censusHutches
+		if type(animals) == "number" and animals > 0 and (hutches or 0) == 0 then
+			add(ROW_NOTE, animals .. " animals nearby and nowhere to house them")
+		elseif type(animals) == "number" and animals == 0 then
+			add(ROW_NOTE, "no animals nearby yet")
+		end
+	end
+
+	if not anything then
+		add(ROW_TASK, "Nothing left. Hold the block.")
+	end
+
+	-- ---------------------------------------------------------- PROGRESS
+	add(ROW_GAP, "")
+	add(ROW_HEAD, "PROGRESS")
+
+	add(ROW_SUB, "Buildings")
+	add(ROW_BAR, doneCount .. " of " .. #detail .. " restored", {
+		done = doneCount, target = #detail,
+	})
+	local tier = progress.buildingTier
+	if tier and BUILDING_TIERS[tier] then
+		add(ROW_NOTE, "Tier " .. tier .. " of 5, " .. BUILDING_TIERS[tier].label)
+	end
+
+	add(ROW_SUB, "Livestock")
+	local stage = progress.livestockStage or 0
+	add(ROW_BAR, "stage " .. stage .. " of 4", { done = stage, target = 4 })
+	if LIVESTOCK_STAGES[stage] then
+		add(ROW_NOTE, LIVESTOCK_STAGES[stage].label)
+	end
+
+	-- ---------------------------------------------------------- BLOCKED
+	if #unreadable > 0 then
+		add(ROW_GAP, "")
+		add(ROW_HEAD, "CANNOT CHECK YET")
+		add(ROW_SUB, "Too far to inspect")
+		for i = 1, math.min(#unreadable, 4) do
+			add(ROW_NOTE, nameBuilding(unreadable[i], px, py))
+		end
+		if #unreadable > 4 then
+			add(ROW_NOTE, "and " .. (#unreadable - 4) .. " more")
+		end
+	end
+
+	return rows
+end
+
+-- Colour per row kind. Only the task lines are bright; everything else recedes,
+-- so the eye lands on the thing to go and do.
+local ROW_COLOUR = {
+	head = SKIN.active,
+	sub = SKIN.dim,
+	task = SKIN.text,
+	note = SKIN.faint,
+	bar = SKIN.dim,
+	gap = SKIN.faint,
 }
 
--- The three marks. Kept as plain characters rather than glyphs, because the
--- game's bitmap fonts do not carry a tick and a missing glyph draws as nothing
--- at all - an invisible mark is worse than a plain one.
-local MARK_GLYPH = { yes = "+", no = "x", unknown = "?" }
-local MARK_COLOUR = { yes = SKIN.done, no = SKIN.blocked, unknown = SKIN.unread }
-
--- How tall a card is, open or shut.
---
--- Single owner of card geometry. drawCard calls this rather than recomputing,
--- so the drawing and the hit-testing can never disagree about where a card
--- ends - a disagreement would put the click on the wrong card.
-function TwoManCrewJournalWindow:cardHeight(card)
-	local lineH = getTextManager():getFontHeight(self:font())
-	local scale = self:scale()
-
-	-- Every gap is derived from the font height and the size, never from a
-	-- constant, so a bigger size grows the row rather than cramming a large
-	-- font into a small one.
-	local h = lineH + math.floor(4 * scale) + math.floor(LADDER_H * scale)
-		+ math.floor(3 * scale) + 2
-	if card.context then h = h + lineH end
-	if card.expanded then
-		h = h + #(card.checks or {}) * math.max(lineH + 2, math.floor(CHECK_ROW_H * scale))
-	end
-	return h
-end
-
--- The height of one check row inside an open card. Shared by the renderer and
--- cardHeight so the two cannot disagree about where a card ends.
-function TwoManCrewJournalWindow:checkRowHeight()
-	local lineH = getTextManager():getFontHeight(self:font())
-	return math.max(lineH + 2, math.floor(CHECK_ROW_H * self:scale()))
-end
-
--- Draws one card, and its checks when it is open. Returns the y of the next
--- row, and stamps item.height so rowAt() can hit-test a tall card - the same
--- contract vanilla's recipe list uses (ISRecipeScrollingListBox.lua:191).
---
--- The alpha positions below differ between the two calls and that is not a
--- typo: drawRect takes alpha BEFORE the rgb triplet (ISUIElement.lua:1191),
--- drawText takes it LAST (ISUIElement.lua:1293).
-function TwoManCrewJournalWindow:drawCard(y, item, alt)
-	local card = item and item.item
-	if not card then
-		return y + ((item and item.height) or self.list.itemheight or 20)
-	end
-
+-- Draws one briefing row. Returns the next row's y, which is the contract the
+-- list uses to set item.height (ISScrollingListBox.lua:533).
+function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
+	local row = item and item.item
 	local font = self:font()
 	local lineH = getTextManager():getFontHeight(font)
-	local height = self:cardHeight(card)
-	local top = y
-	local x = CARD_PAD + SPINE_W + 5
-	-- Usable width, not full width: the scrollbar owns the right-hand gutter.
+	local scale = self:scale()
+	local pad = math.floor(3 * scale)
+	local height = lineH + pad
+
+	if not row then
+		item.height = height
+		return y + height
+	end
+
+	if row.kind == ROW_GAP then
+		height = math.floor(lineH * 0.5)
+		item.height = height
+		return y + height
+	end
+
 	local w = (self.list and self.list:getWidth() or self.width) - SCROLLBAR_W
+	local x = CARD_PAD + math.floor((INDENT[row.kind] or 0) * scale)
+	local c = ROW_COLOUR[row.kind] or SKIN.text
 
-	-- Body. Alternating rows separate adjacent cards without a heavy rule.
-	local bg = alt and SKIN.panel or SKIN.ground
-	self:drawRect(0, y, w, height, 1, bg.r, bg.g, bg.b)
+	if row.kind == ROW_HEAD then
+		-- A category gets a little air above it and a rule beneath, so the three
+		-- sections separate without any box drawing.
+		height = lineH + math.floor(7 * scale)
+		self:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
+		self:drawRect(x, y + lineH + math.floor(2 * scale), w - x - CARD_PAD, 1,
+			1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
 
-	local state = STATE_COLOUR[card.state] or SKIN.faint
+	elseif row.kind == ROW_BAR then
+		-- Label on the left, ladder filling the rest. One cell per building or
+		-- stage, because these counts are small enough to count.
+		local labelW = getTextManager():MeasureStringX(font, row.text)
+		self:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
 
-	-- The spine: state as colour, read before a word is parsed.
-	self:drawRect(CARD_PAD, y + 2, SPINE_W, height - 4, 1, state.r, state.g, state.b)
+		local tone = row.tone or {}
+		local target = tone.target or 0
+		local done = tone.done or 0
+		local barX = x + labelW + math.floor(12 * scale)
+		local barW = w - barX - CARD_PAD
+		local barH = math.floor(LADDER_H * scale)
+		local barY = y + math.floor((lineH - barH) / 2)
 
-	-- Chevron, task, count.
-	self:drawText(card.expanded and "v" or ">", x, y + 2,
-		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
-
-	local taskColour = SKIN.text
-	if card.state == "locked" or card.state == "done" then taskColour = SKIN.dim end
-	local countW = getTextManager():MeasureStringX(self:font(),
-		card.state == "locked" and "locked"
-		or (tostring(card.done or 0) .. " / " .. tostring(card.target or 0)))
-	self:drawText(
-		TwoManCrewJournalWindow.fit(card.task, w - CARD_PAD - (x + 12) - countW - 10, font),
-		x + 12, y + 2,
-		taskColour.r, taskColour.g, taskColour.b, 1, self:font())
-
-	local count = "locked"
-	if card.state ~= "locked" then
-		count = tostring(card.done or 0) .. " / " .. tostring(card.target or 0)
-	end
-	local cw = getTextManager():MeasureStringX(self:font(), count)
-	self:drawText(count, w - CARD_PAD - cw, y + 2,
-		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
-
-	y = y + lineH + 4
-
-	-- Progress. A ladder while the target is small enough to count, a
-	-- continuous bar once it is not - see LADDER_MAX.
-	local ladderH = math.floor(LADDER_H * self:scale())
-	local barW = w - x - CARD_PAD
-	local target = card.target or 0
-	local done = card.done or 0
-
-	if target > 0 and target <= LADDER_MAX then
-		local gap = 2
-		local cellW = (barW - (target - 1) * gap) / target
-		for i = 1, target do
-			local cx = x + (i - 1) * (cellW + gap)
-			local c = (i <= done) and SKIN.done or SKIN.ground
-			self:drawRect(cx, y, cellW, ladderH, 1, c.r, c.g, c.b)
-			self:drawRectBorder(cx, y, cellW, ladderH, 1,
-				SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
+		if target > 0 and barW > 20 then
+			local gap = 2
+			local cellW = (barW - (target - 1) * gap) / target
+			for i = 1, target do
+				local cx = barX + (i - 1) * (cellW + gap)
+				local cc = (i <= done) and SKIN.done or SKIN.ground
+				self:drawRect(cx, barY, cellW, barH, 1, cc.r, cc.g, cc.b)
+				self:drawRectBorder(cx, barY, cellW, barH, 1,
+					SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
+			end
 		end
+
 	else
-		self:drawRect(x, y, barW, ladderH, 1, SKIN.ground.r, SKIN.ground.g, SKIN.ground.b)
-		if target > 0 and done > 0 then
-			self:drawRect(x, y, barW * (done / target), ladderH, 1,
-				SKIN.active.r, SKIN.active.g, SKIN.active.b)
-		end
-		self:drawRectBorder(x, y, barW, ladderH, 1,
-			SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
-	end
-	y = y + ladderH + math.floor(3 * self:scale())
-
-	-- Context, so the ladder is never anonymous.
-	-- Measured like every other string in this card. It was the one draw that
-	-- skipped fit(), sitting between two that did not, so a long tier name
-	-- painted straight off the panel edge and over whatever was beside it.
-	-- "Measure before you draw" has to be every call, not most of them.
-	if card.context then
+		local prefix = ""
+		if row.kind == ROW_TASK then prefix = "> " end
 		self:drawText(
-			TwoManCrewJournalWindow.fit(card.context, w - CARD_PAD - x, font), x, y,
-			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, font)
-		y = y + lineH
+			TwoManCrewJournalWindow.fit(prefix .. row.text, w - x - CARD_PAD, font),
+			x, y, c.r, c.g, c.b, 1, font)
 	end
-
-	-- The checks, only while the card is open.
-	if card.expanded then
-		for _, chk in ipairs(card.checks or {}) do
-			local mc = MARK_COLOUR[chk.mark] or SKIN.dim
-			self:drawText(MARK_GLYPH[chk.mark] or "?", x + 8, y,
-				mc.r, mc.g, mc.b, 1, self:font())
-			local labelRoom = w - CARD_PAD - (x + 22)
-			if chk.why then
-				labelRoom = labelRoom
-					- getTextManager():MeasureStringX(self:font(), chk.why) - 10
-			end
-			self:drawText(TwoManCrewJournalWindow.fit(chk.label, labelRoom, font), x + 22, y,
-				SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
-			-- The reason is right-aligned, so it can collide with a long label.
-			-- Give the label whatever is left and trim it rather than letting
-			-- the two overlap into an unreadable smear.
-			if chk.why then
-				local ww = getTextManager():MeasureStringX(self:font(), chk.why)
-				self:drawText(chk.why, w - CARD_PAD - ww, y,
-					SKIN.faint.r, SKIN.faint.g, SKIN.faint.b, 1, self:font())
-			end
-			y = y + self:checkRowHeight()
-		end
-	end
-
-	-- Bottom rule.
-	self:drawRect(0, top + height - 1, w, 1, 1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
 
 	item.height = height
-	return top + height
+	return y + height
 end
 
--- Trims a string to fit a pixel width, ending in ".." when it had to cut.
+-- Rebuilds the Orders briefing from the last server reply.
 --
--- The engine has no clipped-text draw, so an over-long string simply keeps
--- painting past the panel edge and over whatever is there. Measuring and
--- trimming is the only way to keep a row readable at any window size.
-function TwoManCrewJournalWindow.fit(text, room, font)
-	text = tostring(text or "")
-	if room <= 0 then return "" end
-
-	font = font or UIFont.Small
-	local manager = getTextManager()
-	if manager:MeasureStringX(font, text) <= room then
-		return text
-	end
-
-	-- Linear scan from the end. These strings are short and this runs once per
-	-- visible row, so a binary search would buy nothing worth the complexity.
-	for i = #text - 1, 1, -1 do
-		local candidate = string.sub(text, 1, i) .. ".."
-		if manager:MeasureStringX(font, candidate) <= room then
-			return candidate
-		end
-	end
-	return ""
-end
-
--- Names the stage a card belongs to, for the context line under the ladder.
---
--- "Tier 3 of 5" says where you are; "Tier 3 of 5 - Half the Block" says what
--- you are doing. Names come from the display tables at the top of this file, so
--- a missing or out-of-range index degrades to the bare position, never to nil.
-local function tierLabel(names, index, word)
-	local position = word .. " " .. tostring(index or 0) .. " of " .. #names
-	local entry = index and names[index]
-	if entry and entry.label then
-		return position .. " - " .. entry.label
-	end
-	return position
-end
-
--- Turns the two server payloads the client already holds into task cards.
---
--- Pure by design: no getCell, no getPlayer, no drawing, no engine global at
--- all. That is what makes it testable under the fengari harness, and it is why
--- every decision below is a field read rather than a world lookup.
---
--- A card is:
---   { key, track, task, context, state, done, target, checks = {...}, expanded }
--- A check is:
---   { mark = "yes"|"no"|"unknown", label = string, why = string|nil }
---
--- The three marks are not two. "unknown" means the ground was never loaded and
--- nothing could be read, which is a different fact from a condition that
--- failed. Collapsing the two was the original defect in the Buildings view: a
--- crew could not tell a broken window from a building nobody had walked near.
-function TwoManCrewJournalWindow.buildCards(progress, detail)
-	local cards = {}
-	progress = progress or {}
-
-	-- Building track. One check per claimed building, so the card explains
-	-- itself instead of asserting a number the crew cannot audit.
-	if type(progress.buildingRemaining) == "string" and progress.buildingRemaining ~= "" then
-		local checks = {}
-		local done = 0
-		local blocked = false
-
-		for i, row in ipairs(detail or {}) do
-			local mark = "unknown"
-			if row.status == "restored" then
-				mark = "yes"
-				done = done + 1
-			elseif row.status == "not_restored" then
-				mark = "no"
-				blocked = true
-			end
-
-			table.insert(checks, {
-				mark = mark,
-				-- Coordinates, because "Building 3" is not something a player can
-				-- walk to. The server already sends x and y per building
-				-- (TwoManCrew_Restoration.lua:445-446); the old label threw them
-				-- away and left four indistinguishable rows.
-				label = (type(row.x) == "number" and type(row.y) == "number")
-					and string.format("#%d at %d,%d - %s units",
-						i, row.x, row.y, tostring(row.units))
-					or string.format("#%d - %s units", i, tostring(row.units)),
-				why = TwoManCrewJournalWindow.describeRow(row),
-			})
-		end
-
-		table.insert(cards, {
-			key = "building",
-			track = "building",
-			task = progress.buildingRemaining,
-			context = tierLabel(BUILDING_TIERS, progress.buildingTier, "Tier"),
-			state = blocked and "blocked" or "active",
-			done = done,
-			target = #checks,
-			checks = checks,
-			expanded = false,
-		})
-	end
-
-	-- Livestock track. The census numbers stop being a free-floating block at
-	-- the bottom of the panel and become the conditions they actually gate.
-	if type(progress.livestockRemaining) == "string" and progress.livestockRemaining ~= "" then
-		-- A count that is absent is not a count of zero: the census may simply
-		-- not have run yet, which is the "unknown" case again.
-		local function countCheck(value, label)
-			if type(value) ~= "number" then
-				return { mark = "unknown", label = label, why = "could not read" }
-			end
-			if value > 0 then
-				return { mark = "yes", label = label, why = value .. " seen" }
-			end
-			return { mark = "no", label = label, why = "0 seen" }
-		end
-
-		local checks = {
-			countCheck(progress.censusTroughs, "A feeding trough on the block"),
-			countCheck(progress.censusAnimals, "A living animal near the crew"),
-			countCheck(progress.censusHutches, "An occupied hutch"),
-			countCheck(progress.censusBabies, "A young animal"),
-		}
-
-		local done = 0
-		local failed = false
-		for _, c in ipairs(checks) do
-			if c.mark == "yes" then
-				done = done + 1
-			elseif c.mark == "no" then
-				failed = true
-			end
-		end
-
-		table.insert(cards, {
-			key = "livestock",
-			track = "livestock",
-			task = progress.livestockRemaining,
-			context = tierLabel(LIVESTOCK_STAGES, progress.livestockStage, "Stage"),
-			state = failed and "blocked" or "active",
-			done = done,
-			target = #checks,
-			checks = checks,
-			expanded = false,
-		})
-	end
-
-	return cards
-end
-
--- Toggles a card open or shut, then rebuilds the list.
---
--- The scroll offset is captured and restored around the rebuild, because
--- clearing a list resets its scroll. Without this, opening the last card would
--- jump the view back to the top and hide the very thing just clicked.
-function TwoManCrewJournalWindow:onCardClicked(card)
-	if not card or card.expanded == nil then return end
-	card.expanded = not card.expanded
-
-	local offset = self.list.yScroll or 0
-	self:populateCampaign()
-	self.list.yScroll = offset
-end
-
--- Rebuilds the Orders list from the last server reply.
---
--- Everything the old flat version printed is still shown, but as structure
--- rather than as nineteen equal rows: the task is the card's headline, the
--- census numbers are the checks inside it, and the tier name is the context
--- line under the ladder. The two "Next:" hints that used to render last, below
--- the diagnostics, are now the headline of the only two cards that matter.
+-- Everything the old card version showed is still here, but as prose a player
+-- can act on rather than as ids, coordinates and an internal score.
 function TwoManCrewJournalWindow:populateCampaign()
 	local progress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
 	local received = TwoManCrew.Client and TwoManCrew.Client.tierProgressReceived
@@ -867,20 +789,15 @@ function TwoManCrewJournalWindow:populateCampaign()
 		return
 	end
 
-	-- Rebuilt only when absent, so an open card stays open across a redraw.
-	-- Fresh server data clears self.cards, which is what forces a rebuild.
-	if not self.cards then
-		self.cards = TwoManCrewJournalWindow.buildCards(progress, detail)
-	end
+	-- The crew's own position, so every building can be given a direction and a
+	-- distance instead of a coordinate pair. Nil is handled: the briefing simply
+	-- omits the "where" rather than printing a wrong one.
+	local player = getPlayer()
+	local px, py
+	if player then px, py = player:getX(), player:getY() end
 
-	if #self.cards == 0 then
-		self.list:addItem("Every objective is complete. Hold the block.", nil)
-		return
-	end
-
-	for _, card in ipairs(self.cards) do
-		local row = self.list:addItem(card.task, card)
-		if row then row.height = self:cardHeight(card) end
+	for _, row in ipairs(TwoManCrewJournalWindow.buildBriefing(progress, detail, px, py)) do
+		self.list:addItem(row.text or "", row)
 	end
 end
 
@@ -1060,8 +977,8 @@ function TwoManCrewJournalWindow:prerender()
 	local scaleNow = self:scale()
 	if self.lastScale ~= scaleNow then
 		self.lastScale = scaleNow
-		self.cards = nil
 		self:layout()
+		self:populate()
 	end
 
 	-- Keep the panel live while it is open.
@@ -1184,7 +1101,6 @@ function TwoManCrewJournalWindow:onSetStep(step)
 
 	-- Drop the cards so their heights are rebuilt at the new font, and lay out
 	-- again rather than waiting for a resize.
-	self.cards = nil
 	self:layout()
 end
 
