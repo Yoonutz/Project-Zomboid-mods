@@ -49,21 +49,26 @@ The assignment is sized so it can actually be finished. A block worth roughly
 18 to 34 rooms of restoration work is accepted; anything larger is rejected, and
 no single oversized building can swallow the whole campaign.
 
-## On-screen crew panel
+## On-screen crew badge
 
-A small panel sits in the top-left corner while you play. No key needed - it
-shows, at a glance:
+A small crew badge sits in the top-left corner while you play. No key needed.
+At rest it is just the icon plus a status dot - green when your partner is
+nearby, grey when you are working alone - so it stays out of the way of the
+game.
+
+**Hover** it and it expands to the full status:
 
 - whether your partner is nearby, or that you are working alone
 - how many crew deeds you have racked up
 - the latest line from the crew journal
 
 Project Zomboid does not let mods add a real moodle - that list is fixed in the
-game itself - so this is a custom panel instead.
+game itself - so this is a custom widget instead.
 
 **Left click** it to open the crew journal. **Drag** it anywhere; where you drop
 it is remembered. **Right click** it for a settings menu: panel size, which
-lines to show, lock its position, or reset it.
+lines to show, whether to keep the text on screen permanently, lock its
+position, or reset it.
 
 Panel position and size are yours alone - your partner keeps their own layout.
 
@@ -107,4 +112,12 @@ Check every Lua file parses:
 ```
 npm install --no-save luaparse
 node check-lua.mjs Contents
+```
+
+The UI icons under `Contents/mods/TwoManCrew/42/media/ui/` are generated, not
+hand-drawn. Each one is a 16x16 character grid in `make-icons.py`, upscaled to
+a 48x48 variant. Edit the grid and re-run rather than editing the PNGs:
+
+```
+python make-icons.py
 ```

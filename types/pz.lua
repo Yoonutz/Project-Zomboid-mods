@@ -27,6 +27,17 @@
 ---@class RoomDef
 ---@class Texture
 
+--- Server-side global object system for feeding troughs. Derives
+--- SGlobalObjectSystem (server/FeedingTrough/SFeedingTroughSystem.lua:5), so it
+--- exposes getLuaObjectCount()/getLuaObjectByIndex(i) from
+--- server/Map/SGlobalObjectSystem.lua:40-46. The `.instance` singleton is real
+--- and used by vanilla at server/FeedingTrough/BuildingObjects/ISFeedingTrough.lua:8.
+--- Declared `any` like every other engine class above: the mod calls it
+--- defensively behind a nil check and a pcall, so a typed surface would claim
+--- more than this stub can honestly verify.
+---@type any
+SFeedingTroughSystem = nil
+
 --- Engine globals ---------------------------------------------------------
 
 --- Returns the local player (client only). Nil before a game is loaded.
@@ -37,6 +48,23 @@ function getPlayer(index) end
 ---@param index number
 ---@return any
 function getSpecificPlayer(index) end
+
+--- The Java-backed list of connected players (:size() / :get(i), 0-indexed).
+--- Available in ANY multiplayer context, host and client alike - not
+--- dedicated-server only. Verified client-side at client/Chat/ISChat.lua:560
+--- and client/DebugUIs/ISTriggerThunderUI.lua:13, shared at
+--- shared/RadioCom/ISRadioInteractions.lua:263, server-side at
+--- server/Foraging/forageServer.lua:463, server/XpSystem/XpUpdate.lua:300,
+--- server/ClientCommands.lua:628. Singleplayer has no online list; use
+--- getNumActivePlayers() + getSpecificPlayer() there.
+---@return any
+function getOnlinePlayers() end
+
+--- Number of players active on THIS machine (1, or more with split-screen).
+--- Verified at client/Fishing/FishingHandler.lua:6 and
+--- server/XpSystem/XpUpdate.lua:301.
+---@return number
+function getNumActivePlayers() end
 
 ---@return any
 function getGameTime() end
@@ -54,6 +82,19 @@ function getCore() end
 ---@param path string
 ---@return any
 function getTexture(path) end
+
+--- Real-time clock in milliseconds. Independent of the in-game clock, so it
+--- is what UI timeouts are measured against.
+--- Verified: client/Chat/ISChat.lua:469 and :526.
+---@return number
+function getTimestampMs() end
+
+--- Text metrics. `getTextManager():MeasureStringX(font, text)` returns the
+--- pixel width a string will occupy in that font, which is what right-aligned
+--- and centred UI text is positioned from.
+--- Verified: client/Chat/ISChat.lua:422, client/DebugUIs/AnimationClipViewer.lua:63.
+---@return any
+function getTextManager() end
 
 --- True on a game client, including a listen-server host's client half.
 ---@return boolean

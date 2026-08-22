@@ -32,8 +32,9 @@ local function OnPlayerUpdate(player)
 	if tickCounter < CHECK_INTERVAL_TICKS then return end
 	tickCounter = 0
 
-	if TwoManCrew.isAlone(player) then return end -- alone: silent no-op per SPEC
-
+	-- No isAlone() guard here: it is getPartner(player) == nil internally, so
+	-- calling both ran the whole player scan twice per check on an
+	-- OnPlayerUpdate path. The nil check below is the same test, once.
 	local moodles = player:getMoodles()
 	if not moodles then return end
 	if moodles:getMoodleLevel(MoodleType.HEAVY_LOAD) <= HEAVY_LOAD_THRESHOLD then return end

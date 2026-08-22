@@ -42,7 +42,13 @@ local function onKeyStartPressed(key)
 	local player = getPlayer()
 	if not player then return end
 
-	if TwoManCrew.isAlone(player) then return end
+	-- Say something rather than nothing. This used to return silently, so a
+	-- crew with no partner in range experienced F9 as a dead key with no
+	-- indication whether the mod was even loaded.
+	if TwoManCrew.getPartner(player, cfg.RANGE_TILES) == nil then
+		HaloTextHelper.addBadText(player, "No crew partner in range.")
+		return
+	end
 
 	if TwoManCrew.onCooldown(player, COOLDOWN_KEY, cfg.COOLDOWN_SECONDS) then
 		HaloTextHelper.addText(player, "Distress call still on cooldown.")

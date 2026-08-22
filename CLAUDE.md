@@ -10,6 +10,9 @@
   current API reference — the PZwiki `LuaDocs` page itself is stale, see
   `docs/luadocs-wiki-note.md`). Add newly-verified facts to `docs/` as they're
   confirmed rather than re-deriving them each time.
+  `docs/api-documentation-sources.md` ranks every external doc source — which
+  is current, which is archived, and the browser User-Agent needed to fetch
+  `pzwiki.net` and `projectzomboid.com` (both 403 the default fetch agent).
 - New mods: copy `_template/`, don't hand-build the folder tree — it already
   matches the Steam Workshop packaging layout (`workshop.txt` +
   `Contents/mods/<ModID>/{common,41,42}/`).

@@ -19,12 +19,19 @@ local function OnClientCommand(module, command, player, args)
 		return
 	end
 
-	local partner = TwoManCrew.getPartner(player)
+	-- Search the full advertised distress range, not CREW_RADIUS. Previously
+	-- this used the default 12-tile getPartner, so RANGE_TILES (30) was checked
+	-- afterwards against a partner who was already guaranteed to be within 12 -
+	-- the wider range could never apply, and a call only worked when the partner
+	-- was already beside you.
+	local partner = TwoManCrew.getPartner(player, cfg.RANGE_TILES)
 	if not partner then return end
 
-	-- Distress range is intentionally wider than crew radius (config
-	-- comment: "how far a distress call can reach beyond crew radius"), so
-	-- check it against the caller-supplied position, not CREW_RADIUS.
+	-- Re-check against the CLIENT-SUPPLIED position, which is the only thing
+	-- here the client controls. getPartner above already guarantees the
+	-- partner is within RANGE_TILES of the caller's server-side position, so
+	-- this is not the range check any more - it rejects a spoofed args.x/y
+	-- that would otherwise let a distant caller alert someone out of range.
 	local dist = partner:DistTo(args.x, args.y)
 	if dist > cfg.RANGE_TILES then return end
 

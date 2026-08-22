@@ -23,7 +23,7 @@ function TwoManCrew.Client.requestCrewReport(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestCrewReport", {})
+	TwoManCrew.requestFromServer(player, "requestCrewReport", {})
 end
 
 -- Formats and prints the tally/journal to the player via HaloText and the

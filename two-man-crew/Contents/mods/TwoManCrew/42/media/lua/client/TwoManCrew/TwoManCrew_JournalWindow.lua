@@ -8,10 +8,12 @@
 -- top as the standing objective.
 --
 -- Also holds the Campaign view: the five building tiers and four livestock
--- stages from GOALS.md, showing what is done and what remains. A single
--- "View: Journal / Campaign" toggle button switches between the two, rather
--- than a second ISTabPanel - see the toggle-vs-tabs note below the button
--- definitions for why.
+-- stages from GOALS.md, showing what is done and what remains, plus the
+-- Buildings view: one line per claimed building with the reason it is not
+-- yet banked. A single view button cycles Journal -> Campaign -> Buildings,
+-- rather than an ISTabPanel - see the toggle-vs-tabs note below the button
+-- definitions for why. The button's label names the view the NEXT press
+-- switches to, so it reads as an instruction rather than a state.
 --
 -- Verified APIs (installed Build 42.20.3):
 --   ISCollapsableWindow:derive   client/Camping/ISUI/ISCampingInfoWindow.lua:4
@@ -48,7 +50,20 @@ TwoManCrewJournalWindow = ISCollapsableWindow:derive("TwoManCrewJournalWindow")
 
 local PAD = 8
 local ROW = 20
-local BUTTON_W = 90
+
+-- Icon buttons, sized to be comfortably hittable rather than merely legal.
+--
+-- The first icon pass used 28x22 with a 14px icon, which was reported as
+-- "bugged and small" - and it was: a 14px picture is smaller than the text
+-- label it replaced, so the row looked like a mistake rather than a design.
+-- These are square, generous, and the icon fills most of the face.
+local BUTTON_W = 40
+local BUTTON_H = 40
+
+-- Icon drawn inside each button, leaving an even margin all round. At 28px
+-- inside a 40px button the art reads clearly at a glance and still has room
+-- to breathe against the border.
+local ICON = 28
 
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape
@@ -57,17 +72,46 @@ local BUTTON_W = 90
 local BUILDING_TIERS = {
 	{ key = "tier1", label = "One House" },
 	{ key = "tier2", label = "The Row" },
-	{ key = "tier3", label = "The Square" },
-	{ key = "tier4", label = "The Walls" },
+	{ key = "tier3", label = "Half the Block" },
+	{ key = "tier4", label = "Every Door and Window" },
 	{ key = "tier5", label = "The Rebuilt Town" },
 }
 
 local LIVESTOCK_STAGES = {
-	{ key = "L1", label = "The Pen" },
+	{ key = "L1", label = "The Trough" },
 	{ key = "L2", label = "First Stock" },
 	{ key = "L3", label = "The Hutch" },
 	{ key = "L4", label = "The Herd" },
 }
+
+-- Builds one square icon button, adds it to the window and returns it.
+--
+-- Position is a placeholder: layout() is the single owner of where the row
+-- actually sits, so every button is created at PAD,0 and moved later.
+--
+-- The title is kept even though an image hides it, because ISButton falls
+-- back to drawing the title when self.image is nil (ISButton.lua:197). That
+-- makes a missing texture degrade to a readable text button rather than an
+-- invisible one - the same nil-safety the panel's badge uses.
+function TwoManCrewJournalWindow:makeIconButton(title, texturePath, tooltip, onclick)
+	local button = ISButton:new(PAD, 0, BUTTON_W, BUTTON_H, title, self, onclick)
+	button:initialise()
+
+	local texture = getTexture(texturePath)
+	if texture then
+		button:setImage(texture)
+		-- Force the drawn size so the 48px source art is not blitted at its
+		-- native size inside a 28px button. ISButton only honours these two
+		-- fields together (ISButton.lua:222).
+		button.forcedWidthImage = ICON
+		button.forcedHeightImage = ICON
+	end
+
+	button.tooltip = tooltip
+	self:addChild(button)
+
+	return button
+end
 
 function TwoManCrewJournalWindow:createChildren()
 	ISCollapsableWindow.createChildren(self)
@@ -76,50 +120,63 @@ function TwoManCrewJournalWindow:createChildren()
 
 	self.claimLabel = nil
 
-	-- "journal" or "campaign" - which view the content area currently
-	-- renders. Toggled by viewButton; see the tabs-vs-toggle note at the top
-	-- of this file for why this is a button rather than an ISTabPanel.
+	-- "journal", "campaign" or "buildings" - which view the content area
+	-- currently renders. Cycled by viewButton; see the tabs-vs-toggle note at
+	-- the top of this file for why this is a button rather than an ISTabPanel.
 	self.activeView = "journal"
 
 	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, ROW)
 	self.list:initialise()
 	self.list:instantiate()
-	self.list.itemheight = ROW
+	-- Compact font so a full claim fits without reaching for the scroll wheel.
+	-- setFont sets the font, its height and the row height together
+	-- (client/ISUI/ISScrollingListBox.lua:703-708), so ROW must not be assigned
+	-- to itemheight after this - the list owns row height now. Vanilla drives
+	-- list boxes the same way at
+	-- client/DebugUIs/DebugMenu/GlobalModData/GlobalModData.lua:42.
+	self.list:setFont(UIFont.NewSmall, 1)
 	self.list.selected = -1
 	self.list.drawBorder = true
 	self:addChild(self.list)
 
-	self.refreshButton = ISButton:new(
-		PAD, 0, BUTTON_W, ROW,
-		"Refresh", self, TwoManCrewJournalWindow.onRefresh
+	-- Icon buttons rather than three wide text buttons. The labels were the
+	-- widest thing in the window and forced a 460px minimum width for what
+	-- are three one-word actions; the icon carries the meaning and the
+	-- tooltip carries the word, which is how vanilla's own toolbars work.
+	--
+	-- setImage/tooltip verified at client/ISUI/ISButton.lua:179 (setImage)
+	-- and :317-327 (the tooltip is rendered by ISButton itself when the
+	-- field is set - no ISToolTip wiring needed here).
+	--
+	-- Every button keeps a text fallback title: getTexture returns nil for a
+	-- missing file, and a button with neither image nor title is an invisible
+	-- square. ISButton draws the title only when self.image is nil
+	-- (ISButton.lua:197), so setting both costs nothing and means a packaging
+	-- mistake degrades to the old text button instead of an empty row.
+	self.refreshButton = self:makeIconButton(
+		"Refresh", "media/ui/TwoManCrew_Refresh.png",
+		"Refresh - ask the server for the latest tally and journal",
+		TwoManCrewJournalWindow.onRefresh
 	)
-	self.refreshButton:initialise()
-	self:addChild(self.refreshButton)
 
-	self.claimButton = ISButton:new(
-		PAD, 0, BUTTON_W, ROW,
-		"Claim a block", self, TwoManCrewJournalWindow.onClaim
+	self.claimButton = self:makeIconButton(
+		"Claim", "media/ui/TwoManCrew_Claim.png",
+		"Claim a block - the server surveys and assigns your campaign",
+		TwoManCrewJournalWindow.onClaim
 	)
-	self.claimButton:initialise()
-	self:addChild(self.claimButton)
 
-	self.viewButton = ISButton:new(
-		PAD, 0, BUTTON_W, ROW,
-		"View: Campaign", self, TwoManCrewJournalWindow.onToggleView
+	-- Tooltip names the view the next press switches to. Starting view is
+	-- "journal", so the first press goes to Campaign.
+	self.viewButton = self:makeIconButton(
+		"View", "media/ui/TwoManCrew_View.png",
+		"Switch view - next: Campaign",
+		TwoManCrewJournalWindow.onToggleView
 	)
-	self.viewButton:initialise()
-	self:addChild(self.viewButton)
 
-	-- Forces an immediate rescan of the claim. Without this button the server's
-	-- requestRestorationCheck handler had no caller at all: restoration only
-	-- ever updated on the ten-minute tick, and a crew that had just finished a
-	-- house had no way to see it counted.
-	self.checkButton = ISButton:new(
-		PAD, 0, BUTTON_W, ROW,
-		"Check progress", self, TwoManCrewJournalWindow.onCheckRestoration
-	)
-	self.checkButton:initialise()
-	self:addChild(self.checkButton)
+	-- No "Check progress" button. It existed to force an immediate rescan, but
+	-- opening the Buildings view now does that (see onToggleView), so the
+	-- button only duplicated it. Three buttons also leaves every label room to
+	-- breathe. onCheckRestoration survives as the rescan entry point.
 
 	-- Every child above is created at a placeholder position; layout() is the
 	-- single owner of where they actually sit, so the window is laid out the
@@ -149,7 +206,7 @@ function TwoManCrewJournalWindow:layout()
 	-- bottom of every button was overdrawn and the bottom edge swallowed the clicks.
 	-- Reserve the strip and sit the buttons above it.
 	local rh = self.resizable and self:resizeWidgetHeight() or 0
-	local buttonsY = self.height - rh - ROW - PAD
+	local buttonsY = self.height - rh - BUTTON_H - PAD
 
 	-- List stops above the button row, never behind it.
 	local listY = top + ROW
@@ -161,20 +218,21 @@ function TwoManCrewJournalWindow:layout()
 	self.list:setWidth(self.width - PAD * 2)
 	self.list:setHeight(listH)
 
-	-- Buttons share the usable width evenly, so they always fit whatever the
-	-- window has been resized to rather than overflowing a fixed layout.
-	local buttons = { self.refreshButton, self.claimButton, self.viewButton, self.checkButton }
+	-- Icon buttons keep their square size and group at the left, rather than
+	-- being stretched to share the full width. Three text buttons had to
+	-- stretch because their labels needed the room; three icons stretched to
+	-- a third of a wide window each would just be three small pictures
+	-- marooned in the middle of large empty rectangles.
+	local buttons = { self.refreshButton, self.claimButton, self.viewButton }
 	local gap = 6
-	local usable = self.width - PAD * 2 - gap * (#buttons - 1)
-	local each = math.floor(usable / #buttons)
-	if each < 40 then each = 40 end
 
 	local x = PAD
 	for i = 1, #buttons do
 		buttons[i]:setX(x)
 		buttons[i]:setY(buttonsY)
-		buttons[i]:setWidth(each)
-		x = x + each + gap
+		buttons[i]:setWidth(BUTTON_W)
+		buttons[i]:setHeight(BUTTON_H)
+		x = x + BUTTON_W + gap
 	end
 end
 
@@ -205,16 +263,39 @@ function TwoManCrewJournalWindow:onRefresh()
 	if TwoManCrew.Client and TwoManCrew.Client.requestTierProgress then
 		TwoManCrew.Client.requestTierProgress(getPlayer())
 	end
+	if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+		TwoManCrew.Client.requestClaimDetail(getPlayer())
+	end
+
+	-- Show that the press was heard. Without this the button looks dead
+	-- whenever the reply contains what the list already showed, which on an
+	-- empty journal is every single press - the round trip happened, nothing
+	-- on screen moved, and the only reasonable conclusion was "broken".
+	self.refreshFlashMs = 1200
+
+	-- Force the next prerender to rebuild the list even if the server hands
+	-- back the very same table. The identity comparison in prerender exists
+	-- to avoid rebuilding every frame, but it also means a manual Refresh
+	-- could legitimately change nothing on screen; clearing these makes an
+	-- explicit press always repaint.
+	self.lastSeenReport = nil
+	self.lastSeenTierProgress = nil
+	self.lastSeenClaimDetail = nil
 end
 
--- Asks the server to rescan the claim now rather than waiting for the timer.
--- The server owns the verdict; this only requests it. Reply is handled in
--- TwoManCrew_TierReport.lua's OnServerCommand, which refreshes this window.
+-- Asks the server to rescan the claim now rather than waiting for the
+-- ten-minute tick. The server owns the verdict; this only requests it. Reply is
+-- handled in TwoManCrew_TierReport.lua's OnServerCommand.
+--
+-- No longer bound to a button - opening the Buildings view calls this instead
+-- (see onToggleView). Kept because it is the only on-demand rescan entry point,
+-- and without it the server's requestRestorationCheck handler would have no
+-- caller at all.
 function TwoManCrewJournalWindow:onCheckRestoration()
 	local player = getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestRestorationCheck", {})
+	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {})
 	HaloTextHelper.addText(player, "Checking the claim...")
 end
 
@@ -227,20 +308,48 @@ function TwoManCrewJournalWindow:onClaim()
 	end
 end
 
--- Flips between the Journal and Campaign views. A button, not a keybind -
--- everything in this window is click-driven.
-function TwoManCrewJournalWindow:onToggleView()
-	if self.activeView == "journal" then
-		self.activeView = "campaign"
-		self.viewButton:setTitle("View: Journal")
-	else
-		self.activeView = "journal"
-		self.viewButton:setTitle("View: Campaign")
+-- Cycles Journal -> Campaign -> Buildings -> Journal. The button label names
+-- the view the NEXT press will switch to.
+local VIEW_ORDER = { "journal", "campaign", "buildings" }
+local VIEW_LABEL = {
+	journal = "Journal",
+	campaign = "Campaign",
+	buildings = "Buildings",
+}
+
+local function nextView(current)
+	for i, name in ipairs(VIEW_ORDER) do
+		if name == current then
+			return VIEW_ORDER[(i % #VIEW_ORDER) + 1]
+		end
 	end
-	-- Force a repopulate even though the underlying report tables did not
-	-- change - only which one is displayed did.
+	return VIEW_ORDER[1]
+end
+
+function TwoManCrewJournalWindow:onToggleView()
+	self.activeView = nextView(self.activeView)
+
+	-- The button is an icon now, so the "what does pressing this do" text
+	-- lives in the tooltip rather than the label. The header line below the
+	-- title bar is what tells you which view you are currently looking at -
+	-- without that, an icon-only button would leave the window unlabelled.
+	self.viewButton.tooltip = "Switch view - next: " .. VIEW_LABEL[nextView(self.activeView)]
+
+	-- Entering the Buildings view forces a fresh rescan, which is what the
+	-- removed "Check progress" button used to do. Requesting the detail alone
+	-- would render whatever the last ten-minute tick happened to leave behind,
+	-- and neither Refresh nor the Campaign view rescans anything - they only
+	-- re-read stored state.
+	if self.activeView == "buildings" then
+		self:onCheckRestoration()
+		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+			TwoManCrew.Client.requestClaimDetail(getPlayer())
+		end
+	end
+
 	self.lastSeenReport = nil
 	self.lastSeenTierProgress = nil
+	self.lastSeenClaimDetail = nil
 end
 
 -- Rebuilds the list from the last server reply. Newest first, because the last
@@ -356,6 +465,57 @@ function TwoManCrewJournalWindow:populateCampaign()
 		self.list:addItem(string.format("[%s] %s: %s", mark, stage.key, stage.label), stage)
 	end
 
+	-- What the last census actually saw. Without this a stage reads as
+	-- incomplete with no way to tell "saw zero animals" from "could not look".
+	if type(progress.censusAnimals) == "number" then
+		local line = string.format(
+			"Last count: %d animals (%d young)",
+			progress.censusAnimals, progress.censusBabies or 0
+		)
+		self.list:addItem(line, nil)
+	end
+
+	if type(progress.censusTroughs) == "number" then
+		self.list:addItem(
+			string.format("Feeding troughs on the block: %d", progress.censusTroughs),
+			nil
+		)
+	elseif progress.censusAnimals ~= nil then
+		self.list:addItem("Feeding troughs: could not read", nil)
+	end
+
+	if type(progress.censusHutches) == "number" then
+		self.list:addItem(
+			string.format("Occupied hutches seen: %d", progress.censusHutches),
+			nil
+		)
+	end
+
+	if type(progress.herdNightsDone) == "number"
+		and type(progress.herdNightsNeeded) == "number"
+	then
+		self.list:addItem(
+			string.format(
+				"Herd held: %d of %d nights",
+				progress.herdNightsDone, progress.herdNightsNeeded
+			),
+			nil
+		)
+	end
+
+	-- Tier 5's hold countdown. Only present once every building is restored.
+	if type(progress.holdNightsDone) == "number"
+		and type(progress.holdNightsNeeded) == "number"
+	then
+		self.list:addItem(
+			string.format(
+				"Holding the block: %d of %d nights",
+				progress.holdNightsDone, progress.holdNightsNeeded
+			),
+			nil
+		)
+	end
+
 	-- What is left to do next, per track. TwoManCrew_Tiers.lua sends these as
 	-- buildingRemaining and livestockRemaining; the generic names below were
 	-- guessed before that module existed and never matched, so the hint never
@@ -373,9 +533,95 @@ function TwoManCrewJournalWindow:populateCampaign()
 	end
 end
 
+-- Turns one detail row into a single human line explaining its status.
+-- Returns nil when there is nothing useful to add (an already-banked
+-- building needs no explanation).
+function TwoManCrewJournalWindow.describeRow(row)
+	if row.status == "restored" then
+		return nil
+	end
+
+	-- An explicit server-supplied reason always wins - it is more specific
+	-- than anything reconstructed from the flags.
+	if row.reason then
+		return row.reason
+	end
+
+	-- Kept short: the reason now shares the building's line, so a long string
+	-- clips at the panel edge rather than wrapping.
+	if row.status == "unknown" then
+		if row.roomsSeen and row.roomsTotal and row.roomsSeen < row.roomsTotal then
+			return string.format("only %d/%d rooms seen - walk closer", row.roomsSeen, row.roomsTotal)
+		end
+		return "too far - walk closer"
+	end
+
+	local todo = {}
+	if row.windowsOk == false then table.insert(todo, "windows") end
+	if row.doorsOk == false then table.insert(todo, "doors") end
+	if row.noCorpses == false then table.insert(todo, "corpses") end
+	if row.crewPresent == false then table.insert(todo, "nobody here") end
+
+	if #todo == 0 then
+		return "blocked - check the logs"
+	end
+	return "needs " .. table.concat(todo, ", ")
+end
+
+-- Renders one line per claimed building plus an indented reason line, so the
+-- crew can see which building is blocked and on what.
+--
+-- Three statuses, deliberately distinct: DONE (banked), WORK (a real condition
+-- failed) and ?? (not checkable right now - usually the ground is not loaded
+-- because nobody is near it). Collapsing "unknown" into "not restored" was the
+-- original defect; a crew could not tell a broken window from a far-away
+-- building.
+function TwoManCrewJournalWindow:populateBuildings()
+	local detail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+	local received = TwoManCrew.Client and TwoManCrew.Client.claimDetailReceived
+	self.list:clear()
+
+	if not received then
+		self.list:addItem("Asking the server...", nil)
+		return
+	end
+	if not detail or #detail == 0 then
+		self.list:addItem("No claim yet - press Claim a block.", nil)
+		return
+	end
+
+	local done = 0
+	for _, row in ipairs(detail) do
+		if row.status == "restored" then done = done + 1 end
+	end
+	self.list:addItem(string.format("-- %d of %d restored --", done, #detail), nil)
+
+	for i, row in ipairs(detail) do
+		local mark = "??"
+		if row.status == "restored" then
+			mark = "DONE"
+		elseif row.status == "not_restored" then
+			mark = "WORK"
+		end
+
+		-- Reason shares the building's own line rather than taking an indented
+		-- second row. Two rows per building overflowed the list at seven
+		-- buildings, and this panel should be readable without scrolling it.
+		local line = string.format("[%s] %d. %s units", mark, i, tostring(row.units))
+		local reason = TwoManCrewJournalWindow.describeRow(row)
+		if reason then
+			line = line .. " - " .. reason
+		end
+
+		self.list:addItem(line, row)
+	end
+end
+
 function TwoManCrewJournalWindow:populate()
 	if self.activeView == "campaign" then
 		self:populateCampaign()
+	elseif self.activeView == "buildings" then
+		self:populateBuildings()
 	else
 		self:populateJournal()
 	end
@@ -403,21 +649,64 @@ function TwoManCrewJournalWindow:prerender()
 	-- every frame.
 	local report = TwoManCrew.Client and TwoManCrew.Client.lastReport
 	local tierProgress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
-	if report ~= self.lastSeenReport or tierProgress ~= self.lastSeenTierProgress then
+	local claimDetail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+	if report ~= self.lastSeenReport
+		or tierProgress ~= self.lastSeenTierProgress
+		or claimDetail ~= self.lastSeenClaimDetail
+	then
 		self.lastSeenReport = report
 		self.lastSeenTierProgress = tierProgress
+		self.lastSeenClaimDetail = claimDetail
 		self:populate()
 	end
 
 	local y = self:titleBarHeight() + PAD - 2
 	local summary = TwoManCrew.Client and TwoManCrew.Client.claimSummary
+	local refusal = TwoManCrew.Client and TwoManCrew.Client.lastClaimRefusal
 
 	if summary and summary.count and summary.count > 0 then
 		local restored = summary.restored or 0
 		local text = "Claim: " .. restored .. " of " .. summary.count .. " buildings restored"
 		self:drawText(text, PAD, y, 0.85, 0.8, 0.6, 1, UIFont.Small)
+	elseif refusal then
+		-- The server surveyed and said no. Kept on screen rather than left to
+		-- the halo text that fades: a player who presses claim and sees only
+		-- a vanishing message reads the button as broken, which is what was
+		-- reported. Amber, because it is an answer and not an error.
+		self:drawText("No claim: " .. refusal, PAD, y, 0.9, 0.7, 0.4, 1, UIFont.Small)
 	else
-		self:drawText("No claim yet - press Claim a block", PAD, y, 0.6, 0.6, 0.6, 1, UIFont.Small)
+		-- The button says "Claim" now, not "Claim a block", so the hint names
+		-- the icon by its tooltip word rather than a label that no longer exists.
+		self:drawText("No claim yet - press the flag button", PAD, y, 0.6, 0.6, 0.6, 1, UIFont.Small)
+	end
+
+	-- Which view is on screen, right-aligned on the same header line. The
+	-- view button lost its text label when it became an icon, so without this
+	-- there would be nothing on screen naming the current view.
+	local viewName = VIEW_LABEL[self.activeView] or "Journal"
+	local vw = getTextManager():MeasureStringX(UIFont.Small, viewName)
+	self:drawText(viewName, self.width - PAD - vw, y, 0.55, 0.6, 0.7, 1, UIFont.Small)
+
+	-- Refresh acknowledgement. A crew with an empty journal saw the list
+	-- redraw the identical "nothing recorded yet" line and concluded the
+	-- button was dead - the request had in fact gone out and been answered.
+	-- Flashing a short confirmation makes the round trip visible whether or
+	-- not the contents changed, which is the only thing the button was
+	-- missing. Timer counts down in real milliseconds, same clock the crew
+	-- panel's own refresh uses.
+	if self.refreshFlashMs and self.refreshFlashMs > 0 then
+		self.refreshFlashMs = self.refreshFlashMs - UIManager.getMillisSinceLastRender()
+
+		-- Drawn on the header line, to the LEFT of the right-aligned view
+		-- name. It must not sit above the button row: that space belongs to
+		-- the scrolling list, which renders after this prerender as a child
+		-- and would paint its own rows straight over the text. The header
+		-- strip is the only band this window draws into directly.
+		local label = "updated"
+		local labelW = getTextManager():MeasureStringX(UIFont.Small, label)
+		local labelX = self.width - PAD - vw - 8 - labelW
+
+		self:drawText(label, labelX, y, 0.6, 0.85, 0.6, 1, UIFont.Small)
 	end
 end
 
@@ -459,11 +748,14 @@ function TwoManCrewJournalWindow:new(x, y, width, height)
 
 	-- ISResizeWidget clamps a drag to the target's minimumWidth/minimumHeight
 	-- (ISResizeWidget.lua:13-22) and both default to 0, so the window could be
-	-- dragged down to nothing and the button row would be squashed to its 40px
-	-- floor and overlap. Four buttons plus the gaps and padding is the real
-	-- floor for width; the title bar, header line, one list row and the button
-	-- row is the floor for height.
-	o.minimumWidth = PAD * 2 + BUTTON_W * 4 + 6 * 3
+	-- dragged down to nothing and the button row would be squashed and overlap.
+	--
+	-- With icon buttons the row is no longer what sets the floor - three 28px
+	-- squares need barely 100px. The header line is the widest fixed element
+	-- now ("Claim: N of N buildings restored" plus the right-aligned view
+	-- name), so the floor is set from that instead. Sizing to the buttons
+	-- would let the window shrink until the header clipped.
+	o.minimumWidth = 300
 	o.minimumHeight = 160
 	o.lastSeenReport = nil
 

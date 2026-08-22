@@ -27,11 +27,30 @@ TwoManCrew.Client.lastTierProgress = nil
 -- "waiting" instead of "unavailable" before the first round trip completes.
 TwoManCrew.Client.tierProgressReceived = false
 
+-- Last per-building claim detail from the server, as an array of rows (see
+-- TwoManCrew.Server.getClaimDetail for the row shape). nil until the first
+-- reply arrives.
+TwoManCrew.Client.lastClaimDetail = nil
+
+-- True once a claimDetail reply has arrived, so the renderer can distinguish
+-- "waiting for the server" from "the server says there is no claim".
+TwoManCrew.Client.claimDetailReceived = false
+
 function TwoManCrew.Client.requestTierProgress(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestTierProgress", {})
+	TwoManCrew.requestFromServer(player, "requestTierProgress", {})
+end
+
+-- Asks the server for the per-building breakdown of the claim. Separate from
+-- requestTierProgress because the server rescans the claim to answer this,
+-- which is far more expensive than reading stored tier state.
+function TwoManCrew.Client.requestClaimDetail(player)
+	player = player or getPlayer()
+	if not player then return end
+
+	TwoManCrew.requestFromServer(player, "requestClaimDetail", {})
 end
 
 local function onServerCommand(module, command, args)
@@ -55,6 +74,17 @@ local function onServerCommand(module, command, args)
 		if TwoManCrew.Client.requestTierProgress then
 			TwoManCrew.Client.requestTierProgress(player)
 		end
+		if TwoManCrew.Client.requestClaimDetail then
+			TwoManCrew.Client.requestClaimDetail(player)
+		end
+		return
+	end
+
+	if command == "claimDetail" then
+		TwoManCrew.Client.claimDetailReceived = true
+		-- args.buildings may be nil when the server has no claim. Stored
+		-- verbatim; the renderer tolerates a missing or empty list.
+		TwoManCrew.Client.lastClaimDetail = args.ok and args.buildings or nil
 		return
 	end
 

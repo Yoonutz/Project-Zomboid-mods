@@ -37,18 +37,14 @@ local function OnClientCommand(module, command, player, args)
 
 	-- Re-validate proximity server-side; never trust the client's claim.
 	-- SiteRadius uses its own configured radius rather than the default
-	-- crew radius, so this checks distance directly instead of calling
-	-- TwoManCrew.getPartner (which is hardcoded to TwoManCrew.CREW_RADIUS).
-	local players = IsoPlayer.getPlayers()
-	if not players then return end
-
+	-- crew radius, so this checks distance directly. It also keeps the
+	-- winning partner's distance, which getPartner does not return.
 	local px, py = player:getX(), player:getY()
 	local partner = nil
 	local partnerDist = nil
 
-	for i = 0, players:size() - 1 do
-		local other = players:get(i)
-		if other and other ~= player then
+	for _, other in ipairs(TwoManCrew.getAllPlayers()) do
+		if other ~= player then
 			local dist = other:DistTo(px, py)
 			if dist <= TwoManCrew.SiteRadius.RADIUS_TILES then
 				if not partnerDist or dist < partnerDist then

@@ -22,24 +22,89 @@ TwoManCrew.Client = TwoManCrew.Client or {}
 -- without asking again.
 TwoManCrew.Client.claimSummary = nil
 
+-- True between sending a claim request and receiving its reply. Used to stop
+-- a second press piling another "Surveying..." on top of the first: repeated
+-- presses were reported as the button "spamming" that line, because each one
+-- printed it again while the first request was still outstanding.
+TwoManCrew.Client.claimPending = false
+
 function TwoManCrew.Client.requestClaim(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestClaim", {})
+	if TwoManCrew.Client.claimPending then
+		HaloTextHelper.addText(player, "Still surveying - wait for the answer")
+		return
+	end
+
+	-- Pending state and the optimistic line BOTH go up before the request is
+	-- dispatched, never after. In singleplayer there is no network: the
+	-- request runs the server handler inline and its reply comes back before
+	-- requestFromServer even returns. Setting claimPending afterwards
+	-- therefore re-raised a flag the reply had just cleared, and the claim
+	-- stayed "pending" forever while the answer sat there already delivered.
+	--
+	-- Ordering it this way makes the two worlds behave identically: solo the
+	-- reply clears a flag that is already set, and in multiplayer it clears it
+	-- whenever the answer arrives.
+	TwoManCrew.Client.claimPending = true
+	HaloTextHelper.addText(player, "Surveying the block...")
+
+	TwoManCrew.requestFromServer(player, "requestClaim", {})
+
+	-- Give up waiting after ten seconds and say so. A request that is never
+	-- answered used to leave the optimistic line as the final word, which
+	-- reads as a broken button rather than a failure. The timer is cancelled
+	-- by the reply handler; if it fires, the reply genuinely never arrived.
+	local expectAt = getTimestampMs() + 10000
+	local function onTick()
+		if not TwoManCrew.Client.claimPending then
+			Events.OnTick.Remove(onTick)
+			return
+		end
+		if getTimestampMs() < expectAt then return end
+
+		Events.OnTick.Remove(onTick)
+		TwoManCrew.Client.claimPending = false
+
+		local p = getPlayer()
+		if p then
+			HaloTextHelper.addBadText(p, "No answer from the server - claim failed")
+		end
+		TwoManCrew.Client.lastClaimRefusal = "no answer from the server"
+	end
+
+	Events.OnTick.Add(onTick)
 end
 
 local function onServerCommand(module, command, args)
 	if module ~= TwoManCrew.MODULE then return end
 	if command ~= "claimAssigned" then return end
 
+	-- The answer arrived: release the guard and cancel the timeout, whatever
+	-- the verdict turns out to be.
+	TwoManCrew.Client.claimPending = false
+
 	local player = getPlayer()
 	if not player or not args then return end
 
 	if not args.ok then
-		HaloTextHelper.addBadText(player, "No claim: " .. tostring(args.reason))
+		local reason = tostring(args.reason)
+		HaloTextHelper.addBadText(player, "No claim: " .. reason)
+
+		-- Halo text floats up and fades in a couple of seconds, straight into
+		-- whatever the player was looking at. That is fine for a success, but
+		-- a refusal is the one message that has to survive being missed - the
+		-- reported symptom was "it only says surveying and that's it", which
+		-- is exactly what a fading refusal looks like. Say() puts it in the
+		-- chat log where it can be re-read, and the journal window picks up
+		-- the same reason on its next repaint.
+		player:Say("No claim here - " .. reason)
+		TwoManCrew.Client.lastClaimRefusal = reason
 		return
 	end
+
+	TwoManCrew.Client.lastClaimRefusal = nil
 
 	TwoManCrew.Client.claimSummary = {
 		count = args.count,

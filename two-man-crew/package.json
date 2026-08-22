@@ -1,0 +1,19 @@
+{
+  "name": "two-man-crew",
+  "private": true,
+  "version": "0.3.0",
+  "description": "Build tooling for the Two-Man Crew Project Zomboid mod. Not packaged into the mod itself.",
+  "type": "module",
+  "scripts": {
+    "check": "node check-lua.mjs Contents",
+    "test": "node test-ui.mjs",
+    "icons": "python make-icons.py",
+    "deploy": "node deploy.mjs",
+    "deploy:check": "node deploy.mjs --check",
+    "diagnose": "node diagnose.mjs"
+  },
+  "devDependencies": {
+    "fengari": "^0.1.5",
+    "luaparse": "^0.3.1"
+  }
+}
