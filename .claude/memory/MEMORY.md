@@ -9,6 +9,7 @@ acting on its topic.
 
 - [work-on-master-no-branches](work-on-master-no-branches.md) — commit straight to `master` and push; no feature branches, no worktrees, no PRs, and never suggest one
 - [pz-vanilla-source-is-the-api-reference](pz-vanilla-source-is-the-api-reference.md) — the installed game ships its full Lua source; grep it to verify any API or copy a UI style
+- [pz-language-server-catches-stranded-refs](pz-language-server-catches-stranded-refs.md) — it is NOT on PATH but ships in the VS Code Lua extension; the only scope-aware check here, and skipping it shipped a per-frame crash
 - [pz-lua-diagnostics-setup](pz-lua-diagnostics-setup.md) — `.luarc.json` + `types/pz.lua` stubs; run `--check` from the repo root, and never "fix" the atan2 or duplicate-set-field warnings
 - [pz-mod-state-survives-reinstall](pz-mod-state-survives-reinstall.md) — re-adding or updating a build keeps campaign progress; state is in the save's ModData, not the mod folder
 - [bump-modversion-on-next-change](bump-modversion-on-next-change.md) — standing rule: every mod change bumps `modversion` in the same commit, in BOTH `mod.info` copies

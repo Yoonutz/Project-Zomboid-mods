@@ -48,11 +48,21 @@ globals). `types/` sits outside every mod's `Contents/`, so it is never packaged
 When a mod starts using a new engine global, add it to the stub with a signature
 verified against the installed game source rather than silencing the warning.
 
+It is **not on PATH**. It ships inside the VS Code Lua extension, and that copy
+works fine from the shell:
+
 ```
-lua-language-server --check=. --checklevel=Warning
+"$HOME/.vscode/extensions/sumneko.lua-3.19.1-win32-x64/server/bin/lua-language-server.exe"   --check=. --checklevel=Warning
 ```
 
 Run it from the repo root, not a mod subfolder, or `.luarc.json` is not picked up.
+
+**Run it on every Lua change.** It is the only check here that does scope
+analysis, so it is the only one that catches a variable that no longer exists.
+Skipping it once shipped a crash that fired every render frame and lagged the
+whole machine: a deletion left `vw` behind in an arithmetic expression, luaparse
+parsed it happily, and `__sub not defined for operands` came back from the game.
+Assume any deletion has stranded a reference until this says otherwise.
 
 Never "fix" the atan2 or duplicate-set-field warnings — see
 `.claude/memory/pz-lua-diagnostics-setup.md`.

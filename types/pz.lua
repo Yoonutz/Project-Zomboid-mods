@@ -302,11 +302,23 @@ ISButton = {}
 ---@type any
 ISScrollingListBox = {}
 
+--- Tab container. Verified against the installed Build 42.20.3 source:
+--- ISTabPanel:new at client/ISUI/ISTabPanel.lua:614, addView at :484,
+--- activateView at :438, setEqualTabWidth at :535.
+---@type any
+ISTabPanel = {}
+
 ---@type any
 ISContextMenu = {}
 
 ---@type any
 ISToolTip = {}
+
+--- Fires a game event by name, invoking every registered handler. Used bare
+--- throughout vanilla, e.g. client/DebugUIs/DebugMenu/General/ISDebugBlood.lua:74.
+---@param event string
+---@vararg any
+function triggerEvent(event, ...) end
 
 --- Timed actions -----------------------------------------------------------
 --- Mods wrap these (save the original, replace the method, call through), so

@@ -949,14 +949,18 @@ function TwoManCrewJournalWindow:prerender()
 	if self.refreshFlashMs and self.refreshFlashMs > 0 then
 		self.refreshFlashMs = self.refreshFlashMs - UIManager.getMillisSinceLastRender()
 
-		-- Drawn on the header line, to the LEFT of the right-aligned view
-		-- name. It must not sit above the button row: that space belongs to
-		-- the scrolling list, which renders after this prerender as a child
-		-- and would paint its own rows straight over the text. The header
-		-- strip is the only band this window draws into directly.
+		-- Right-aligned on the header line. It must not sit above the button
+		-- row: that space belongs to the tab panel, which renders after this
+		-- prerender as a child and would paint straight over the text. The
+		-- header strip is the only band this window draws into directly.
+		--
+		-- This used to offset itself left of the view name. The tabs replaced
+		-- that name, and the offset kept subtracting its width - a nil - which
+		-- threw once per frame inside render and dragged the whole machine
+		-- down. Nothing shares this line now, so it simply right-aligns.
 		local label = "updated"
 		local labelW = getTextManager():MeasureStringX(UIFont.Small, label)
-		local labelX = self.width - PAD - vw - 8 - labelW
+		local labelX = self.width - PAD - labelW
 
 		self:drawText(label, labelX, y, 0.6, 0.85, 0.6, 1, UIFont.Small)
 	end
