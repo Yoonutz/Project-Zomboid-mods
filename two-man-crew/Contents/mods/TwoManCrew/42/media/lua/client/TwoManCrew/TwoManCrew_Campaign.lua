@@ -79,6 +79,27 @@ end
 
 local function onServerCommand(module, command, args)
 	if module ~= TwoManCrew.MODULE then return end
+
+	-- The campaign was thrown away. Every cached answer on this client now
+	-- describes a claim that no longer exists, so clear the lot rather than
+	-- letting the journal keep painting the old block until something happens
+	-- to refresh it.
+	if command == "campaignReset" then
+		TwoManCrew.Client.claimSummary = nil
+		TwoManCrew.Client.lastClaimRefusal = nil
+		TwoManCrew.Client.lastClaimDetail = nil
+		TwoManCrew.Client.claimDetailReceived = false
+		TwoManCrew.Client.lastTierProgress = nil
+		TwoManCrew.Client.tierProgressReceived = false
+		TwoManCrew.Client.claimPending = false
+
+		local player = getPlayer()
+		if player then
+			HaloTextHelper.addText(player, "Campaign reset - claim a new block")
+		end
+		return
+	end
+
 	if command ~= "claimAssigned" then return end
 
 	-- The answer arrived: release the guard and cancel the timeout, whatever

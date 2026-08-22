@@ -31,6 +31,7 @@
 --     - client/ISUI/ISToolTip.lua, used to size the expanded plate to its text
 
 require "ISUI/ISUIElement"
+require "ISUI/ISModalDialog"
 require "TwoManCrew/TwoManCrew_Config"
 require "TwoManCrew/TwoManCrew_PanelPrefs"
 
@@ -337,6 +338,9 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	-- loads, and reloading one of those leaves the old hook running as well.
 	context:addOption("Reload journal UI", self, TwoManCrewPanel.onReloadJournalUI)
 
+	-- Destructive, so it asks first and says exactly what it will throw away.
+	context:addOption("Start a new campaign...", self, TwoManCrewPanel.onResetCampaign)
+
 	return true
 end
 
@@ -407,6 +411,33 @@ function TwoManCrewPanel:onReloadJournalUI()
 			HaloTextHelper.addText(player, "Journal UI not found")
 		end
 	end
+end
+
+-- Throws the claim away so a new block can be surveyed.
+--
+-- Confirmed first: this is the one action here that destroys progress, and the
+-- claim cannot be recovered once cleared - a new survey picks buildings from
+-- wherever the crew is standing at the time.
+function TwoManCrewPanel:onResetCampaign()
+	local w, h = 340, 160
+	local modal = ISModalDialog:new(
+		getCore():getScreenWidth() / 2 - w / 2,
+		getCore():getScreenHeight() / 2 - h / 2,
+		w, h,
+		"Throw away the current claim and its tier progress?\n\n" ..
+		"The crew log and deeds are kept. You can then claim a new block from wherever you are standing.",
+		true, self, TwoManCrewPanel.onResetCampaignConfirm)
+	modal:initialise()
+	modal:addToUIManager()
+end
+
+function TwoManCrewPanel:onResetCampaignConfirm(button)
+	if not button or button.internal ~= "YES" then return end
+
+	local player = getPlayer()
+	if not player then return end
+
+	TwoManCrew.requestFromServer(player, "resetCampaign", {})
 end
 
 function TwoManCrewPanel:onReset()

@@ -260,11 +260,44 @@ function TwoManCrew.Server.assignClaim(player)
 	return state.claim
 end
 
--- Handles the client's request to be assigned a claim.
+-- Throws the current campaign away so a fresh block can be claimed.
+--
+-- assignClaim refuses outright while a claim exists (it returns the existing
+-- one with "already assigned"), so clearing state.claim is the only way to
+-- survey new buildings. The tier progress goes with it: leaving it behind would
+-- credit the new block with the old block's restorations.
+--
+-- Destructive by design, and the client asks before calling it.
+local function resetCampaign(player, args)
+	local state = TwoManCrew.Server.getState()
+
+	state.claim = nil
+	state.tiers = nil
+
+	-- The log and the tally are the crew's history rather than the campaign's
+	-- state, so they survive unless the caller explicitly asks otherwise.
+	if args and args.wipeHistory then
+		state.journal = {}
+		state.tally = {}
+	end
+
+	TwoManCrew.replyToPlayer(player, "campaignReset", {
+		ok = true,
+		wipedHistory = (args and args.wipeHistory) and true or false,
+	})
+end
+
+-- Handles the client's request to be assigned a claim, or to reset one.
 local function OnClientCommand(module, command, player, args)
 	if module ~= TwoManCrew.MODULE then return end
-	if command ~= "requestClaim" then return end
 	if not player then return end
+
+	if command == "resetCampaign" then
+		resetCampaign(player, args)
+		return
+	end
+
+	if command ~= "requestClaim" then return end
 
 	-- The survey runs under pcall so that a reply is ALWAYS sent.
 	--
@@ -318,4 +351,8 @@ Events.OnClientCommand.Add(OnClientCommand)
 -- Same handler, reachable without a network hop when singleplayer.
 TwoManCrew.registerLocalHandler("requestClaim", function(player, args)
 	OnClientCommand(TwoManCrew.MODULE, "requestClaim", player, args)
+end)
+
+TwoManCrew.registerLocalHandler("resetCampaign", function(player, args)
+	OnClientCommand(TwoManCrew.MODULE, "resetCampaign", player, args)
 end)

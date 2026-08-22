@@ -314,6 +314,13 @@ ISContextMenu = {}
 ---@type any
 ISToolTip = {}
 
+--- Yes/no confirmation dialog. Signature verified at
+--- client/ISUI/ISModalDialog.lua:187 - (x, y, w, h, text, yesno, target,
+--- onclick, player, param1, param2). The handler receives the button, whose
+--- `internal` field is "YES" or "NO".
+---@type any
+ISModalDialog = {}
+
 --- Fires a game event by name, invoking every registered handler. Used bare
 --- throughout vanilla, e.g. client/DebugUIs/DebugMenu/General/ISDebugBlood.lua:74.
 ---@param event string
