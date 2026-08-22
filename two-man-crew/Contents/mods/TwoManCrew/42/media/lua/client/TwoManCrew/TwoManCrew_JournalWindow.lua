@@ -467,6 +467,110 @@ end
 -- stages from GOALS.md, each marked done/current/unknown from whatever the
 -- server sent. Every field read is optional - a bare-bones or absent Tiers
 -- module still produces a readable (if sparse) list rather than an error.
+-- Turns the two server payloads the client already holds into task cards.
+--
+-- Pure by design: no getCell, no getPlayer, no drawing, no engine global at
+-- all. That is what makes it testable under the fengari harness, and it is why
+-- every decision below is a field read rather than a world lookup.
+--
+-- A card is:
+--   { key, track, task, context, state, done, target, checks = {...}, expanded }
+-- A check is:
+--   { mark = "yes"|"no"|"unknown", label = string, why = string|nil }
+--
+-- The three marks are not two. "unknown" means the ground was never loaded and
+-- nothing could be read, which is a different fact from a condition that
+-- failed. Collapsing the two was the original defect in the Buildings view: a
+-- crew could not tell a broken window from a building nobody had walked near.
+function TwoManCrewJournalWindow.buildCards(progress, detail)
+	local cards = {}
+	progress = progress or {}
+
+	-- Building track. One check per claimed building, so the card explains
+	-- itself instead of asserting a number the crew cannot audit.
+	if type(progress.buildingRemaining) == "string" and progress.buildingRemaining ~= "" then
+		local checks = {}
+		local done = 0
+		local blocked = false
+
+		for i, row in ipairs(detail or {}) do
+			local mark = "unknown"
+			if row.status == "restored" then
+				mark = "yes"
+				done = done + 1
+			elseif row.status == "not_restored" then
+				mark = "no"
+				blocked = true
+			end
+
+			table.insert(checks, {
+				mark = mark,
+				label = string.format("Building %d - %s units", i, tostring(row.units)),
+				why = TwoManCrewJournalWindow.describeRow(row),
+			})
+		end
+
+		table.insert(cards, {
+			key = "building",
+			track = "building",
+			task = progress.buildingRemaining,
+			context = "Tier " .. tostring(progress.buildingTier or 0) .. " of 5",
+			state = blocked and "blocked" or "active",
+			done = done,
+			target = #checks,
+			checks = checks,
+			expanded = false,
+		})
+	end
+
+	-- Livestock track. The census numbers stop being a free-floating block at
+	-- the bottom of the panel and become the conditions they actually gate.
+	if type(progress.livestockRemaining) == "string" and progress.livestockRemaining ~= "" then
+		-- A count that is absent is not a count of zero: the census may simply
+		-- not have run yet, which is the "unknown" case again.
+		local function countCheck(value, label)
+			if type(value) ~= "number" then
+				return { mark = "unknown", label = label, why = "could not read" }
+			end
+			if value > 0 then
+				return { mark = "yes", label = label, why = value .. " seen" }
+			end
+			return { mark = "no", label = label, why = "0 seen" }
+		end
+
+		local checks = {
+			countCheck(progress.censusTroughs, "A feeding trough on the block"),
+			countCheck(progress.censusAnimals, "A living animal near the crew"),
+			countCheck(progress.censusHutches, "An occupied hutch"),
+			countCheck(progress.censusBabies, "A young animal"),
+		}
+
+		local done = 0
+		local failed = false
+		for _, c in ipairs(checks) do
+			if c.mark == "yes" then
+				done = done + 1
+			elseif c.mark == "no" then
+				failed = true
+			end
+		end
+
+		table.insert(cards, {
+			key = "livestock",
+			track = "livestock",
+			task = progress.livestockRemaining,
+			context = "Stage " .. tostring(progress.livestockStage or 0) .. " of 4",
+			state = failed and "blocked" or "active",
+			done = done,
+			target = #checks,
+			checks = checks,
+			expanded = false,
+		})
+	end
+
+	return cards
+end
+
 function TwoManCrewJournalWindow:populateCampaign()
 	local progress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
 	local received = TwoManCrew.Client and TwoManCrew.Client.tierProgressReceived

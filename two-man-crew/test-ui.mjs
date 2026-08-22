@@ -925,6 +925,83 @@ function crewPanelVM() {
 }
 
 // ---------------------------------------------------------------------------
+// buildCards: the pure model behind the Campaign view.
+//
+// This is the one part of the panel that can be tested for real - it takes the
+// two server payloads the client already holds and returns card tables, with no
+// engine call anywhere in it. Everything the cards draw comes from here, so a
+// wrong verdict here is a wrong panel.
+// ---------------------------------------------------------------------------
+{
+  const L = makeVM();
+  runLua(L, `
+    TwoManCrew = TwoManCrew or {}
+    TwoManCrew.Client = {
+      requestCrewReport = function() end, requestTierProgress = function() end,
+      requestClaimDetail = function() end, requestClaim = function() end,
+    }
+  `, "pre");
+  loadFile(L, "shared/TwoManCrew/TwoManCrew_Config.lua");
+  loadFile(L, "client/TwoManCrew/TwoManCrew_JournalWindow.lua");
+
+  runLua(L, `
+    CARDS = TwoManCrewJournalWindow.buildCards({
+      buildingRemaining = "restore three buildings that sit next to each other",
+      buildingTier = 3,
+      livestockRemaining = "build a hutch and put an animal in it, then stand near it",
+      livestockStage = 3,
+      censusAnimals = 2, censusBabies = 0, censusHutches = 0, censusTroughs = 1,
+    }, {
+      { status = "restored",     units = 12 },
+      { status = "restored",     units = 8 },
+      { status = "not_restored", units = 15, windowsOk = false, doorsOk = false },
+      { status = "unknown",      units = 6,  roomsSeen = 2, roomsTotal = 5 },
+    })
+  `, "buildCards");
+
+  check("buildCards: building card comes first",
+    evalLua(L, `CARDS[1] ~= nil and CARDS[1].track == "building"`) === true, "");
+
+  check("buildCards: counts only restored buildings",
+    evalLua(L, `CARDS[1].done == 2 and CARDS[1].target == 4`) === true,
+    `done=${evalLua(L, `CARDS[1].done`)} target=${evalLua(L, `CARDS[1].target`)}`);
+
+  check("buildCards: one check per claimed building",
+    evalLua(L, `#CARDS[1].checks`) === 4, "");
+
+  check("buildCards: a restored building is marked yes",
+    evalLua(L, `CARDS[1].checks[1].mark == "yes"`) === true, "");
+
+  check("buildCards: a failed building is marked no",
+    evalLua(L, `CARDS[1].checks[3].mark == "no"`) === true, "");
+
+  check("buildCards: a failed building names what it needs",
+    evalLua(L, `CARDS[1].checks[3].why`) === "needs windows, doors",
+    String(evalLua(L, `tostring(CARDS[1].checks[3].why)`)));
+
+  // The whole point of the three-mark rule. An unloaded chunk cannot be read,
+  // which is not the same fact as a building that failed its checks. Collapsing
+  // the two was the original defect in the Buildings view.
+  check("buildCards: an unreadable building is unknown, never failed",
+    evalLua(L, `CARDS[1].checks[4].mark == "unknown"`) === true,
+    String(evalLua(L, `tostring(CARDS[1].checks[4].mark)`)));
+
+  check("buildCards: livestock card is present",
+    evalLua(L, `CARDS[2] ~= nil and CARDS[2].track == "livestock"`) === true, "");
+
+  check("buildCards: an empty hutch count fails its check",
+    evalLua(L, `CARDS[2].checks[3].mark == "no"`) === true, "");
+
+  check("buildCards: cards start collapsed",
+    evalLua(L, `CARDS[1].expanded == false`) === true, "");
+
+  // A claim with nothing left to do must not invent a card.
+  runLua(L, `EMPTY = TwoManCrewJournalWindow.buildCards({}, {})`, "empty");
+  check("buildCards: no objectives means no cards",
+    evalLua(L, `#EMPTY`) === 0, "");
+}
+
+// ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
 let failed = 0;
