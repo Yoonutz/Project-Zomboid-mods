@@ -245,7 +245,7 @@ function TwoManCrewJournalWindow:createChildren()
 	self.refreshButton = self:makeIconButton(
 		"Refresh", "media/ui/TwoManCrew_Refresh.png",
 		"Refresh - ask the server for the latest tally and journal",
-		TwoManCrewJournalWindow.onRefresh
+		TwoManCrewJournalWindow.onRefreshPressed
 	)
 
 	self.claimButton = self:makeIconButton(
@@ -346,6 +346,21 @@ end
 -- TwoManCrew.Client.lastReport, which populate() reads on the next render.
 -- Also requests campaign tier progress, so both views are fresh on open and
 -- on every Refresh click - one button, two round trips.
+-- What the Refresh BUTTON does: everything onRefresh does, plus a full rescan
+-- of the claim.
+--
+-- These are deliberately two functions. recheckClaim() walks every building on
+-- the claim, and in singleplayer the "server" runs on the main thread, so the
+-- survey costs a visible hitch. That is fine when a player asks for it and not
+-- fine on a timer or on every window open - this window opens with onRefresh,
+-- which is why the survey does not live in there.
+function TwoManCrewJournalWindow:onRefreshPressed()
+	self:onRefresh()
+	self:onCheckRestoration()
+end
+
+-- Asks the server for fresh data and repaints. Cheap: three requests and a
+-- couple of nils. Safe to call on open.
 function TwoManCrewJournalWindow:onRefresh()
 	if TwoManCrew.Client and TwoManCrew.Client.requestCrewReport then
 		TwoManCrew.Client.requestCrewReport(getPlayer())
@@ -356,11 +371,6 @@ function TwoManCrewJournalWindow:onRefresh()
 	if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
 		TwoManCrew.Client.requestClaimDetail(getPlayer())
 	end
-
-	-- Entering the Buildings view used to force this rescan. There is no view
-	-- switch to hang it on now, so Refresh owns it: without a rescan the
-	-- Buildings tab would render whatever the last ten-minute tick left behind.
-	self:onCheckRestoration()
 
 	-- Show that the press was heard. Without this the button looks dead
 	-- whenever the reply contains what the list already showed, which on an
