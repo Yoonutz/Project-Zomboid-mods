@@ -331,6 +331,12 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 
 	context:addOption("Reset panel", self, TwoManCrewPanel.onReset)
 
+	-- Development convenience: reloads the journal window's Lua in place, so a
+	-- UI change can be seen without leaving the save. Only that one file is
+	-- safe to reload - every other file in this mod hooks a game event when it
+	-- loads, and reloading one of those leaves the old hook running as well.
+	context:addOption("Reload journal UI", self, TwoManCrewPanel.onReloadJournalUI)
+
 	return true
 end
 
@@ -363,6 +369,44 @@ end
 function TwoManCrewPanel:onToggle(field)
 	TwoManCrew.Prefs.toggle(getPlayer(), field)
 	self:applyPrefs()
+end
+
+-- Reloads the journal window from disk, without restarting the game.
+--
+-- The open window MUST go first. reloadLuaFile re-executes the file, which
+-- rebuilds the window's class table from scratch; anything still on screen
+-- belongs to the old table and would keep rendering the old code forever while
+-- the next open created a second window beside it.
+function TwoManCrewPanel:onReloadJournalUI()
+	if TwoManCrewJournalWindow then
+		local open = TwoManCrewJournalWindow.instance
+		if open then
+			open:close()
+			TwoManCrewJournalWindow.instance = nil
+		end
+	end
+
+	-- The path is found rather than typed: getLoadedLua enumerates every loaded
+	-- file, so a moved or renamed mod folder cannot break this.
+	local reloaded = 0
+	for i = 0, getLoadedLuaCount() - 1 do
+		local path = getLoadedLua(i)
+		-- Plain find with the pattern flag off: the path contains dots and
+		-- dashes, which a Lua pattern would treat as wildcards.
+		if path and string.find(path, "TwoManCrew_JournalWindow", 1, true) then
+			reloadLuaFile(path)
+			reloaded = reloaded + 1
+		end
+	end
+
+	local player = getPlayer()
+	if player then
+		if reloaded > 0 then
+			HaloTextHelper.addText(player, "Journal UI reloaded")
+		else
+			HaloTextHelper.addText(player, "Journal UI not found")
+		end
+	end
 end
 
 function TwoManCrewPanel:onReset()

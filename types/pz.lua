@@ -327,6 +327,16 @@ function isShiftKeyDown() end
 ---@return boolean
 function isCtrlKeyDown() end
 
+--- Live Lua reloading. The game's own debug tools use these:
+--- client/DebugUIs/LuaFileBrowser.lua:59-70 enumerates, :100 reloads.
+---@return integer
+function getLoadedLuaCount() end
+---@param index integer
+---@return string
+function getLoadedLua(index) end
+---@param path string
+function reloadLuaFile(path) end
+
 --- Timed actions -----------------------------------------------------------
 --- Mods wrap these (save the original, replace the method, call through), so
 --- they are `any`: the language server must accept both reading the existing
