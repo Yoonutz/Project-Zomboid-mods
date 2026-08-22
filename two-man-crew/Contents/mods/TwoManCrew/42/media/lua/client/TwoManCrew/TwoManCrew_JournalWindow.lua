@@ -152,11 +152,6 @@ function TwoManCrewJournalWindow:createChildren()
 
 	self.claimLabel = nil
 
-	-- "journal", "campaign" or "buildings" - which view the content area
-	-- currently renders. Cycled by viewButton; see the tabs-vs-toggle note at
-	-- the top of this file for why this is a button rather than an ISTabPanel.
-	self.activeView = "journal"
-
 	self.list = ISScrollingListBox:new(PAD, top + ROW, self.width - PAD * 2, ROW)
 	self.list:initialise()
 	self.list:instantiate()
@@ -169,6 +164,41 @@ function TwoManCrewJournalWindow:createChildren()
 	self.list:setFont(UIFont.NewSmall, 1)
 	self.list.selected = -1
 	self.list.drawBorder = true
+
+	-- Three more lists, one per remaining tab, built exactly like the Orders
+	-- list above. addView re-parents them, so none is added to the window here.
+	local function makeList()
+		local l = ISScrollingListBox:new(0, 0, self.width - PAD * 2, ROW)
+		l:initialise()
+		l:instantiate()
+		l:setFont(UIFont.NewSmall, 1)
+		l.selected = -1
+		l.drawBorder = true
+		return l
+	end
+
+	self.buildingsList = makeList()
+	self.livestockList = makeList()
+	self.journalList = makeList()
+
+	-- Four named views, replacing one button that cycled through three states.
+	-- The old button's third state was undiscoverable: reaching Buildings meant
+	-- pressing until it appeared, and nothing on screen said how many presses
+	-- there were. Tabs name themselves and are one click each.
+	--
+	-- Verified: ISTabPanel:new at ISTabPanel.lua:614, addView at :484 (it sets
+	-- the view's y to tabHeight, re-parents it, and shows only the first),
+	-- activateView at :438, setEqualTabWidth at :535. Vanilla drives it the
+	-- same way at ISChat.lua:830 and ISFluidDebugWindow.lua:55-67.
+	self.tabs = ISTabPanel:new(PAD, top + ROW, self.width - PAD * 2, ROW)
+	self.tabs:initialise()
+	self.tabs:setEqualTabWidth(true)
+	self:addChild(self.tabs)
+
+	self.tabs:addView("Orders", self.list)
+	self.tabs:addView("Buildings", self.buildingsList)
+	self.tabs:addView("Livestock", self.livestockList)
+	self.tabs:addView("Journal", self.journalList)
 
 	-- Cards are painted by this window, not by the stock row renderer, and a
 	-- click has to reach the card it landed on. Both are engine hooks:
@@ -217,19 +247,6 @@ function TwoManCrewJournalWindow:createChildren()
 		TwoManCrewJournalWindow.onClaim
 	)
 
-	-- Tooltip names the view the next press switches to. Starting view is
-	-- "journal", so the first press goes to Campaign.
-	self.viewButton = self:makeIconButton(
-		"View", "media/ui/TwoManCrew_View.png",
-		"Switch view - next: Campaign",
-		TwoManCrewJournalWindow.onToggleView
-	)
-
-	-- No "Check progress" button. It existed to force an immediate rescan, but
-	-- opening the Buildings view now does that (see onToggleView), so the
-	-- button only duplicated it. Three buttons also leaves every label room to
-	-- breathe. onCheckRestoration survives as the rescan entry point.
-
 	-- Every child above is created at a placeholder position; layout() is the
 	-- single owner of where they actually sit, so the window is laid out the
 	-- same way on first open and on every resize.
@@ -265,17 +282,31 @@ function TwoManCrewJournalWindow:layout()
 	local listH = buttonsY - PAD - listY
 	if listH < ROW then listH = ROW end
 
-	self.list:setX(PAD)
-	self.list:setY(listY)
-	self.list:setWidth(self.width - PAD * 2)
-	self.list:setHeight(listH)
+	-- The tab panel now owns the content area; the lists are its children and
+	-- are sized relative to it, not to the window. Positioning the panel and
+	-- then each view keeps layout() the single owner of geometry, which is what
+	-- stopped the list from covering the button row in the first place.
+	self.tabs:setX(PAD)
+	self.tabs:setY(listY)
+	self.tabs:setWidth(self.width - PAD * 2)
+	self.tabs:setHeight(listH)
+
+	local innerH = listH - self.tabs.tabHeight
+	if innerH < ROW then innerH = ROW end
+
+	for _, viewObject in ipairs(self.tabs.viewList) do
+		viewObject.view:setX(0)
+		viewObject.view:setY(self.tabs.tabHeight)
+		viewObject.view:setWidth(self.width - PAD * 2)
+		viewObject.view:setHeight(innerH)
+	end
 
 	-- Icon buttons keep their square size and group at the left, rather than
 	-- being stretched to share the full width. Three text buttons had to
 	-- stretch because their labels needed the room; three icons stretched to
 	-- a third of a wide window each would just be three small pictures
 	-- marooned in the middle of large empty rectangles.
-	local buttons = { self.refreshButton, self.claimButton, self.viewButton }
+	local buttons = { self.refreshButton, self.claimButton }
 	local gap = 6
 
 	local x = PAD
@@ -319,6 +350,11 @@ function TwoManCrewJournalWindow:onRefresh()
 		TwoManCrew.Client.requestClaimDetail(getPlayer())
 	end
 
+	-- Entering the Buildings view used to force this rescan. There is no view
+	-- switch to hang it on now, so Refresh owns it: without a rescan the
+	-- Buildings tab would render whatever the last ten-minute tick left behind.
+	self:onCheckRestoration()
+
 	-- Show that the press was heard. Without this the button looks dead
 	-- whenever the reply contains what the list already showed, which on an
 	-- empty journal is every single press - the round trip happened, nothing
@@ -341,7 +377,8 @@ end
 -- handled in TwoManCrew_TierReport.lua's OnServerCommand.
 --
 -- No longer bound to a button - opening the Buildings view calls this instead
--- (see onToggleView). Kept because it is the only on-demand rescan entry point,
+-- (it fired on entering the Buildings view). Kept because it is the only
+-- on-demand rescan entry point,
 -- and without it the server's requestRestorationCheck handler would have no
 -- caller at all.
 function TwoManCrewJournalWindow:onCheckRestoration()
@@ -361,56 +398,11 @@ function TwoManCrewJournalWindow:onClaim()
 	end
 end
 
--- Cycles Journal -> Campaign -> Buildings -> Journal. The button label names
--- the view the NEXT press will switch to.
-local VIEW_ORDER = { "journal", "campaign", "buildings" }
-local VIEW_LABEL = {
-	journal = "Journal",
-	campaign = "Campaign",
-	buildings = "Buildings",
-}
-
-local function nextView(current)
-	for i, name in ipairs(VIEW_ORDER) do
-		if name == current then
-			return VIEW_ORDER[(i % #VIEW_ORDER) + 1]
-		end
-	end
-	return VIEW_ORDER[1]
-end
-
-function TwoManCrewJournalWindow:onToggleView()
-	self.activeView = nextView(self.activeView)
-
-	-- The button is an icon now, so the "what does pressing this do" text
-	-- lives in the tooltip rather than the label. The header line below the
-	-- title bar is what tells you which view you are currently looking at -
-	-- without that, an icon-only button would leave the window unlabelled.
-	self.viewButton.tooltip = "Switch view - next: " .. VIEW_LABEL[nextView(self.activeView)]
-
-	-- Entering the Buildings view forces a fresh rescan, which is what the
-	-- removed "Check progress" button used to do. Requesting the detail alone
-	-- would render whatever the last ten-minute tick happened to leave behind,
-	-- and neither Refresh nor the Campaign view rescans anything - they only
-	-- re-read stored state.
-	if self.activeView == "buildings" then
-		self:onCheckRestoration()
-		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
-			TwoManCrew.Client.requestClaimDetail(getPlayer())
-		end
-	end
-
-	self.lastSeenReport = nil
-	self.lastSeenTierProgress = nil
-	self.cards = nil
-	self.lastSeenClaimDetail = nil
-end
-
 -- Rebuilds the list from the last server reply. Newest first, because the last
 -- thing that happened is the thing you want to read.
 function TwoManCrewJournalWindow:populateJournal()
 	local report = TwoManCrew.Client and TwoManCrew.Client.lastReport
-	self.list:clear()
+	self.journalList:clear()
 
 	if not report or not report.journal or #report.journal == 0 then
 		self.list:addItem("Nothing recorded yet - go and do some work.", nil)
@@ -780,14 +772,14 @@ end
 function TwoManCrewJournalWindow:populateBuildings()
 	local detail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
 	local received = TwoManCrew.Client and TwoManCrew.Client.claimDetailReceived
-	self.list:clear()
+	self.buildingsList:clear()
 
 	if not received then
-		self.list:addItem("Asking the server...", nil)
+		self.buildingsList:addItem("Asking the server...", nil)
 		return
 	end
 	if not detail or #detail == 0 then
-		self.list:addItem("No claim yet - press Claim a block.", nil)
+		self.buildingsList:addItem("No claim yet - press Claim a block.", nil)
 		return
 	end
 
@@ -795,7 +787,7 @@ function TwoManCrewJournalWindow:populateBuildings()
 	for _, row in ipairs(detail) do
 		if row.status == "restored" then done = done + 1 end
 	end
-	self.list:addItem(string.format("-- %d of %d restored --", done, #detail), nil)
+	self.buildingsList:addItem(string.format("-- %d of %d restored --", done, #detail), nil)
 
 	for i, row in ipairs(detail) do
 		local mark = "??"
@@ -814,18 +806,66 @@ function TwoManCrewJournalWindow:populateBuildings()
 			line = line .. " - " .. reason
 		end
 
-		self.list:addItem(line, row)
+		self.buildingsList:addItem(line, row)
 	end
 end
 
-function TwoManCrewJournalWindow:populate()
-	if self.activeView == "campaign" then
-		self:populateCampaign()
-	elseif self.activeView == "buildings" then
-		self:populateBuildings()
-	else
-		self:populateJournal()
+-- Fills the Livestock tab: the four stages and what the last census saw.
+--
+-- The Orders tab carries the single next livestock task; this is the whole
+-- track, so a crew can see which stage they are on and what the game actually
+-- counted. A census that never ran reads as "not counted yet", never as zero -
+-- the same distinction the cards draw as an unknown mark.
+function TwoManCrewJournalWindow:populateLivestock()
+	local progress = TwoManCrew.Client and TwoManCrew.Client.lastTierProgress
+	self.livestockList:clear()
+
+	if not progress then
+		self.livestockList:addItem("No claim yet - press the flag button.", nil)
+		return
 	end
+
+	local stage = progress.livestockStage or 0
+	for i, entry in ipairs(LIVESTOCK_STAGES) do
+		local mark = "..."
+		if i < stage then
+			mark = "done"
+		elseif i == stage then
+			mark = "now"
+		end
+		self.livestockList:addItem(
+			string.format("[%s] %s: %s", mark, entry.key, entry.label), entry)
+	end
+
+	local function countLine(label, value)
+		if type(value) ~= "number" then
+			return label .. ": not counted yet"
+		end
+		return label .. ": " .. value
+	end
+
+	self.livestockList:addItem(countLine("Animals nearby", progress.censusAnimals), nil)
+	self.livestockList:addItem(countLine("Young animals", progress.censusBabies), nil)
+	self.livestockList:addItem(countLine("Occupied hutches", progress.censusHutches), nil)
+	self.livestockList:addItem(countLine("Feeding troughs", progress.censusTroughs), nil)
+
+	if type(progress.herdNightsDone) == "number"
+		and type(progress.herdNightsNeeded) == "number"
+	then
+		self.livestockList:addItem(string.format(
+			"Herd held: %d of %d nights",
+			progress.herdNightsDone, progress.herdNightsNeeded), nil)
+	end
+end
+
+-- Fills every tab. The tab panel decides which one is visible, so all four are
+-- kept current rather than rebuilt on switch - a switch is now a click on a
+-- widget this window never hears about.
+function TwoManCrewJournalWindow:populate()
+	self:populateCampaign()
+	self:populateBuildings()
+	self:populateLivestock()
+	self:populateJournal()
 end
 
 function TwoManCrewJournalWindow:prerender()
@@ -880,13 +920,6 @@ function TwoManCrewJournalWindow:prerender()
 		-- the icon by its tooltip word rather than a label that no longer exists.
 		self:drawText("No claim yet - press the flag button", PAD, y, 0.6, 0.6, 0.6, 1, UIFont.Small)
 	end
-
-	-- Which view is on screen, right-aligned on the same header line. The
-	-- view button lost its text label when it became an icon, so without this
-	-- there would be nothing on screen naming the current view.
-	local viewName = VIEW_LABEL[self.activeView] or "Journal"
-	local vw = getTextManager():MeasureStringX(UIFont.Small, viewName)
-	self:drawText(viewName, self.width - PAD - vw, y, 0.55, 0.6, 0.7, 1, UIFont.Small)
 
 	-- Refresh acknowledgement. A crew with an empty journal saw the list
 	-- redraw the identical "nothing recorded yet" line and concluded the
