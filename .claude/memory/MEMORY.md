@@ -27,3 +27,4 @@ acting on its topic.
 - [pz-instrument-before-fixing-runtime-faults](pz-instrument-before-fixing-runtime-faults.md) — in-game faults get logging + a real game run BEFORE a fix; three builds reasoned from source were all wrong
 - [pz-sendservercommand-is-mp-only](pz-sendservercommand-is-mp-only.md) — `sendServerCommand` reaches nobody in singleplayer; request/reply must use the mod's local-dispatch helpers
 - [superpowers-artifacts-committed-vs-local](superpowers-artifacts-committed-vs-local.md) — plans in `docs/superpowers/plans/` are committed and carry an execution-status banner; `.superpowers/` brainstorm scratch is gitignored on purpose
+- [pz-list-rows-draw-on-the-list](pz-list-rows-draw-on-the-list.md) — a custom `doDrawItem` must draw on the LIST; drawing on the parent window kills scrolling, shifts every row, and the stencil hides the evidence
