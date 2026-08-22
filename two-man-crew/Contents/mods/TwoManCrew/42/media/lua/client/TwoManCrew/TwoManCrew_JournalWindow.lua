@@ -7,13 +7,14 @@
 -- day it happened and who did it. The campaign claim, once assigned, sits at the
 -- top as the standing objective.
 --
--- Also holds the Campaign view: the five building tiers and four livestock
--- stages from GOALS.md, showing what is done and what remains, plus the
--- Buildings view: one line per claimed building with the reason it is not
--- yet banked. A single view button cycles Journal -> Campaign -> Buildings,
--- rather than an ISTabPanel - see the toggle-vs-tabs note below the button
--- definitions for why. The button's label names the view the NEXT press
--- switches to, so it reads as an instruction rather than a state.
+-- Also holds three more views, as real tabs: Buildings (one line per claimed
+-- building with the reason it is not yet banked), Livestock (the four stages
+-- and the last census), and Journal (the log itself).
+--
+-- Tabs are an ISTabPanel with one child list per view. An earlier version used
+-- a single button cycling through the views over one shared list, and that is
+-- exactly the shape that lets one view paint over another - nothing guarantees
+-- the previous view's rows are gone. Do not go back to it.
 --
 -- Verified APIs (installed Build 42.20.3):
 --   ISCollapsableWindow:derive   client/Camping/ISUI/ISCampingInfoWindow.lua:4
@@ -111,20 +112,26 @@ local POLL_MS = 2000
 -- Size. Read from the same player preference the crew badge uses, so one choice
 -- drives the badge, this window and its buttons together
 -- (TwoManCrew_PanelPrefs.lua, SCALES).
-function TwoManCrewJournalWindow:scale()
+function TwoManCrewJournalWindow:step()
 	local prefs = TwoManCrew.Prefs and TwoManCrew.Prefs.get and TwoManCrew.Prefs.get()
-	return (prefs and prefs.scale) or 1.0
+	return (prefs and prefs.journalStep) or 1
+end
+
+-- Chrome multiplier for this window. Paired with the font below by the size
+-- table, so a bigger step grows the boxes and the words by the same jump - the
+-- mismatch between a continuous multiplier and a stepped font is what made the
+-- buttons outgrow the text.
+function TwoManCrewJournalWindow:scale()
+	local _, chrome = TwoManCrew.Prefs.size(self:step())
+	return chrome or 1.0
 end
 
 -- The engine has a fixed set of fonts, so text cannot scale continuously the
 -- way a rectangle can. Pick the largest font the current size justifies; the
 -- rest of the layout is measured from it, never from a constant.
 function TwoManCrewJournalWindow:font()
-	local scale = self:scale()
-	if scale >= 2.0 then return UIFont.Large end
-	if scale >= 1.25 then return UIFont.Medium end
-	if scale >= 1.0 then return UIFont.Small end
-	return UIFont.NewSmall
+	local font = TwoManCrew.Prefs.size(self:step())
+	return font or UIFont.NewSmall
 end
 
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
@@ -489,7 +496,7 @@ function TwoManCrewJournalWindow:populateJournal()
 	self.journalList:clear()
 
 	if not report or not report.journal or #report.journal == 0 then
-		self.list:addItem("Nothing recorded yet - go and do some work.", nil)
+		self.journalList:addItem("Nothing recorded yet - go and do some work.", nil)
 		return
 	end
 
@@ -499,7 +506,7 @@ function TwoManCrewJournalWindow:populateJournal()
 		if entry and entry.text then
 			local day = entry.worldAgeHours and math.floor(entry.worldAgeHours / 24) or 0
 			local who = entry.playerName or "someone"
-			self.list:addItem("Day " .. day .. "  -  " .. who .. " " .. entry.text, entry)
+			self.journalList:addItem("Day " .. day .. "  -  " .. who .. " " .. entry.text, entry)
 		end
 	end
 end
@@ -629,9 +636,14 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 	y = y + ladderH + math.floor(3 * self:scale())
 
 	-- Context, so the ladder is never anonymous.
+	-- Measured like every other string in this card. It was the one draw that
+	-- skipped fit(), sitting between two that did not, so a long tier name
+	-- painted straight off the panel edge and over whatever was beside it.
+	-- "Measure before you draw" has to be every call, not most of them.
 	if card.context then
-		self:drawText(card.context, x, y,
-			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
+		self:drawText(
+			TwoManCrewJournalWindow.fit(card.context, w - CARD_PAD - x, font), x, y,
+			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, font)
 		y = y + lineH
 	end
 
@@ -1144,6 +1156,38 @@ end
 -- javaObject that was never removed. Vanilla singleton windows pair the two calls in an
 -- overridden close() (verified: client/Fishing/FishingDebugWindow.lua:10-11,
 -- client/DebugUIs/ISTeleportDebugUI.lua:142-143).
+-- Right click anywhere in the window opens its own size menu.
+--
+-- Deliberately separate from the badge's menu: the two surfaces store separate
+-- steps, because one number driving both was the complaint. Set the badge from
+-- the badge, and this window from this window.
+function TwoManCrewJournalWindow:onRightMouseUp(x, y)
+	local player = getPlayer()
+	if not player then return end
+
+	local context = ISContextMenu.get(0, self:getAbsoluteX() + x, self:getAbsoluteY() + y)
+	local sizeOption = context:addOption("Journal size", self)
+	local sizeMenu = context:getNew(context)
+	context:addSubMenu(sizeOption, sizeMenu)
+
+	local current = self:step()
+	for i = 1, #TwoManCrew.Prefs.SIZES do
+		local opt = sizeMenu:addOption(tostring(i), self, TwoManCrewJournalWindow.onSetStep, i)
+		if i == current then
+			sizeMenu:setOptionChecked(opt, true)
+		end
+	end
+end
+
+function TwoManCrewJournalWindow:onSetStep(step)
+	TwoManCrew.Prefs.setJournalStep(getPlayer(), step)
+
+	-- Drop the cards so their heights are rebuilt at the new font, and lay out
+	-- again rather than waiting for a resize.
+	self.cards = nil
+	self:layout()
+end
+
 function TwoManCrewJournalWindow:close()
 	self:setVisible(false)
 	self:removeFromUIManager()

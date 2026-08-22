@@ -401,11 +401,13 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	local sizeOption = context:addOption("Size", self)
 	local sizeMenu = context:getNew(context)
 	context:addSubMenu(sizeOption, sizeMenu)
-	local current = TwoManCrew.Prefs.scaleStep(prefs.scale)
-	for i = 1, #TwoManCrew.Prefs.SCALES do
-		local scale = TwoManCrew.Prefs.SCALES[i]
-		local opt = sizeMenu:addOption(tostring(i), self, TwoManCrewPanel.onSetScale, scale)
-		if i == current then
+	-- Badge size only. The journal window has its own, set from its own menu,
+	-- because one number driving both was the "zoom linked to everything"
+	-- complaint. Each step pairs a font with matching chrome, so text and boxes
+	-- grow together instead of drifting apart.
+	for i = 1, #TwoManCrew.Prefs.SIZES do
+		local opt = sizeMenu:addOption(tostring(i), self, TwoManCrewPanel.onSetScale, i)
+		if i == (prefs.badgeStep or 1) then
 			sizeMenu:setOptionChecked(opt, true)
 		end
 	end
@@ -427,8 +429,8 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	return true
 end
 
-function TwoManCrewPanel:onSetScale(scale)
-	TwoManCrew.Prefs.setScale(getPlayer(), scale)
+function TwoManCrewPanel:onSetScale(step)
+	TwoManCrew.Prefs.setBadgeStep(getPlayer(), step)
 	self:applyPrefs()
 end
 
@@ -453,7 +455,8 @@ end
 function TwoManCrewPanel:applyPrefs()
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
 
-	self.scale = prefs.scale
+	local _, chrome = TwoManCrew.Prefs.size(prefs.badgeStep)
+	self.scale = chrome
 	self.showTally = prefs.showTally
 	self.showJournal = prefs.showJournal
 	self.alwaysExpanded = prefs.alwaysExpanded
@@ -469,7 +472,7 @@ TwoManCrewPanel.setup = function()
 	-- the one the Java object is built with when addToUIManager runs - so
 	-- starting small would hand Java a hitbox the widget never uses again.
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
-	local scale = prefs.scale or 1.0
+	local _, scale = TwoManCrew.Prefs.size(prefs.badgeStep)
 	local startWidth = math.floor(WIDTH * scale)
 	local startHeight = math.floor(PAD * scale) * 2 + math.floor(LINE * scale) * 2
 	TwoManCrew.Prefs.clampToScreen(prefs, startWidth, startHeight)

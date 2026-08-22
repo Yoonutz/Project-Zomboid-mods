@@ -23,7 +23,19 @@ local KEY = "TwoManCrew_PanelPrefs"
 local DEFAULTS = {
 	x = 12,
 	y = 90,
-	scale = 1.0,
+	-- Size step for the always-on-screen badge, and a SEPARATE one for the
+	-- journal window. Two fields on purpose.
+	--
+	-- They were one, and the verdict on that was "zoom linked to everything".
+	-- The surfaces want opposite things: the badge is glanceable HUD that should
+	-- stay out of the way, the journal is something you open to sit and read.
+	-- One number cannot serve both.
+	--
+	-- Do NOT merge these back to remove the duplication. The duplication is the
+	-- feature, and merging them is the single most likely way to reintroduce the
+	-- complaint.
+	badgeStep = 2,
+	journalStep = 2,
 	showTally = true,
 	showJournal = true,
 	locked = false,
@@ -37,28 +49,34 @@ local DEFAULTS = {
 
 -- Scale steps offered in the right-click menu. Kept coarse: a slider in a
 -- context menu is worse than four honest choices.
--- Size steps, picked by NUMBER rather than by percentage.
+-- Size presets. Each step pairs a font with the chrome multiplier that suits it.
 --
--- These used to be shown as "85%", "100%", "125%". A percentage asks the player
--- to work out what it is a percentage of; a step number just says bigger. The
--- range also stopped at 1.5, which was not big enough to read comfortably, so
--- it now runs to 3.
+-- These used to be a bare list of multipliers from 0.85 to 3.0, seven steps,
+-- while the font was chosen from only three thresholds. So chrome grew
+-- continuously and text jumped in three places, and between two steps the
+-- buttons visibly outgrew the words on them. That is the whole of the
+-- "inconsistent layout" complaint, and it was arithmetic, not taste.
 --
--- The index into this table IS the number the player clicks, so the order is
--- part of the contract: never reorder or insert in the middle, only append.
-TwoManCrew.Prefs.SCALES = { 0.85, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0 }
+-- Pairing them removes the mismatch by construction: one step, one font, one
+-- chrome multiplier, both moving together. There are only four fonts in the
+-- engine, so there are four steps. Do not add a fifth without a fifth font.
+--
+-- The font is stored by NAME, not as a UIFont value, because this file loads
+-- before the engine globals are guaranteed to exist. Resolve it at use.
+TwoManCrew.Prefs.SIZES = {
+	{ font = "NewSmall", chrome = 1.00 },
+	{ font = "Small",    chrome = 1.20 },
+	{ font = "Medium",   chrome = 1.50 },
+	{ font = "Large",    chrome = 1.90 },
+}
 
--- The step number for a stored scale, for ticking the current entry in a menu.
-function TwoManCrew.Prefs.scaleStep(scale)
-	local best, bestGap = 1, math.huge
-	for i = 1, #TwoManCrew.Prefs.SCALES do
-		local gap = math.abs(TwoManCrew.Prefs.SCALES[i] - (scale or 1.0))
-		if gap < bestGap then
-			best, bestGap = i, gap
-		end
-	end
-	return best
+-- Resolves a step index to its font value and chrome multiplier.
+function TwoManCrew.Prefs.size(step)
+	local entry = TwoManCrew.Prefs.SIZES[step or 1] or TwoManCrew.Prefs.SIZES[1]
+	local font = UIFont and UIFont[entry.font] or nil
+	return font, entry.chrome
 end
+
 
 -- Returns a fresh copy of the defaults. Callers that have no player to read
 -- from get this instead of the DEFAULTS table itself: every mutator writes
@@ -73,6 +91,26 @@ end
 
 -- Returns the live preference table for this player, creating it with defaults
 -- on first use. Mutating the returned table persists with the save.
+-- Older saves stored a single `scale` multiplier. Map it onto the nearest step
+-- once, for both surfaces, so an existing character keeps roughly the size they
+-- had instead of silently snapping back to the default.
+function TwoManCrew.Prefs.migrate(prefs)
+	if prefs.scale == nil then return prefs end
+
+	local best, bestGap = 1, math.huge
+	for i = 1, #TwoManCrew.Prefs.SIZES do
+		local gap = math.abs(TwoManCrew.Prefs.SIZES[i].chrome - prefs.scale)
+		if gap < bestGap then
+			best, bestGap = i, gap
+		end
+	end
+
+	prefs.badgeStep = prefs.badgeStep or best
+	prefs.journalStep = prefs.journalStep or best
+	prefs.scale = nil
+	return prefs
+end
+
 function TwoManCrew.Prefs.get(player)
 	player = player or getPlayer()
 	if not player then return copyDefaults() end
@@ -85,6 +123,11 @@ function TwoManCrew.Prefs.get(player)
 		prefs = {}
 		md[KEY] = prefs
 	end
+
+	-- An older save may still hold the single `scale` field. Fold it into the
+	-- two per-surface steps BEFORE the additive fill, so the migrated value
+	-- wins over the defaults instead of being overwritten by them.
+	TwoManCrew.Prefs.migrate(prefs)
 
 	-- Additive fill: a save written before a preference existed still loads,
 	-- and a preference removed later does not strand a stale value.
@@ -115,9 +158,15 @@ function TwoManCrew.Prefs.setPosition(player, x, y)
 	prefs.y = y
 end
 
-function TwoManCrew.Prefs.setScale(player, scale)
+
+function TwoManCrew.Prefs.setBadgeStep(player, step)
 	local prefs = TwoManCrew.Prefs.get(player)
-	prefs.scale = scale
+	prefs.badgeStep = step
+end
+
+function TwoManCrew.Prefs.setJournalStep(player, step)
+	local prefs = TwoManCrew.Prefs.get(player)
+	prefs.journalStep = step
 end
 
 function TwoManCrew.Prefs.toggle(player, field)
