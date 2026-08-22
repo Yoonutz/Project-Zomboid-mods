@@ -23,8 +23,7 @@ function TwoManCrew.Client.requestCrewReport(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	print("TwoManCrew[client]: sending requestCrewReport")
-	sendClientCommand(player, TwoManCrew.MODULE, "requestCrewReport", {})
+	TwoManCrew.requestFromServer(player, "requestCrewReport", {})
 end
 
 -- Formats and prints the tally/journal to the player via HaloText and the
@@ -58,7 +57,6 @@ end
 local function onServerCommand(module, command, args)
 	if module ~= TwoManCrew.MODULE then return end
 
-	print("TwoManCrew[client]: server replied '" .. tostring(command) .. "'")
 	if command == "crewReport" then
 		local player = getPlayer()
 		if not player or not args then return end

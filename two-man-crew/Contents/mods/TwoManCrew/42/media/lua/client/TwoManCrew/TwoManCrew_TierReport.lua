@@ -40,7 +40,7 @@ function TwoManCrew.Client.requestTierProgress(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestTierProgress", {})
+	TwoManCrew.requestFromServer(player, "requestTierProgress", {})
 end
 
 -- Asks the server for the per-building breakdown of the claim. Separate from
@@ -50,7 +50,7 @@ function TwoManCrew.Client.requestClaimDetail(player)
 	player = player or getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestClaimDetail", {})
+	TwoManCrew.requestFromServer(player, "requestClaimDetail", {})
 end
 
 local function onServerCommand(module, command, args)

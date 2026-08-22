@@ -232,6 +232,27 @@ function getOnlinePlayers() return nil end
 SENT = {}
 function sendClientCommand(p, m, c, a) table.insert(SENT, { module = m, command = c, args = a }) end
 
+-- sendServerCommand models the REAL engine behaviour that caused the bug:
+-- it is a network send, so in singleplayer (isClient and isServer both
+-- false) it reaches nobody and OnServerCommand never fires. Recording the
+-- attempt without delivering it is exactly what the game does, and is what
+-- lets the suite catch code that relies on the reply arriving solo.
+REPLIES_ATTEMPTED = {}
+function sendServerCommand(player, m, c, a)
+  table.insert(REPLIES_ATTEMPTED, { module = m, command = c, args = a })
+  if isClient() or isServer() then
+    FIRE("OnServerCommand", m, c, a)
+  end
+  -- Singleplayer: deliberately dropped, like the engine.
+end
+
+-- triggerEvent fires a registered event directly, with no network involved.
+-- Verified in the shipped source (85 call sites), e.g.
+-- client/DebugUIs/DebugMenu/General/ISDebugBlood.lua:74.
+function triggerEvent(name, ...)
+  if EVENTS[name] then FIRE(name, ...) end
+end
+
 EVENTS = {}
 local function mkEvent(name)
   EVENTS[name] = { handlers = {} }
@@ -553,14 +574,30 @@ function crewPanelVM() {
   loadFile(L, "shared/TwoManCrew/TwoManCrew_Config.lua");
   loadFile(L, "client/TwoManCrew/TwoManCrew_Campaign.lua");
 
-  runLua(L, `HALO = {} SENT = {} TwoManCrew.Client.requestClaim(getPlayer())`, "c1");
-  check("claim: one press sends exactly one request", evalLua(L, "#SENT") === 1, `sent ${evalLua(L, "#SENT")}`);
+  // DISPATCHED counts requests that actually left requestClaim, by whichever
+  // route applies: a network send in multiplayer, a direct handler call solo.
+  // Counting sendClientCommand alone would assert the transport rather than
+  // the behaviour, and would read "broken" for a singleplayer game that is
+  // working perfectly.
+  runLua(L, `
+    DISPATCHED = 0
+    TwoManCrew.LocalHandlers["requestClaim"] = function() DISPATCHED = DISPATCHED + 1 end
+    local realSend = sendClientCommand
+    sendClientCommand = function(...) DISPATCHED = DISPATCHED + 1 return realSend(...) end
+    HALO = {} SENT = {}
+    TwoManCrew.Client.requestClaim(getPlayer())
+  `, "c1");
+  check(
+    "claim: one press dispatches exactly one request",
+    evalLua(L, "DISPATCHED") === 1,
+    `dispatched ${evalLua(L, "DISPATCHED")}`
+  );
 
   // Press three more times with no reply. Only the first may print the
   // optimistic line; the rest must be told to wait.
   runLua(L, `TwoManCrew.Client.requestClaim(getPlayer())
              TwoManCrew.Client.requestClaim(getPlayer())`, "c2");
-  const sent = evalLua(L, "#SENT");
+  const sent = evalLua(L, "DISPATCHED");
   const surveying = evalLua(L, `(function()
       local n = 0
       for _, h in ipairs(HALO) do
@@ -569,9 +606,9 @@ function crewPanelVM() {
       return n
     end)()`);
   check(
-    "claim: repeat presses do not spam Surveying or re-send",
+    "claim: repeat presses do not spam Surveying or re-dispatch",
     sent === 1 && surveying === 1,
-    `sent=${sent} surveyingLines=${surveying}`
+    `dispatched=${sent} surveyingLines=${surveying}`
   );
 
   // No reply ever arrives. After the timeout the player must be told.
@@ -613,6 +650,120 @@ function crewPanelVM() {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// SINGLEPLAYER round trip. This is the fault the user actually hit: Refresh
+// did nothing and Claim only ever said "Surveying the block...".
+//
+// Root cause, found by instrumenting the live game rather than reading code:
+// sendServerCommand is a network send and reaches nobody in singleplayer, so
+// the server received every request (14 of them in the log) and not one reply
+// was ever delivered. The stub above models that faithfully - solo, a
+// sendServerCommand is recorded and dropped.
+//
+// These tests load the real client AND server files together, exactly as
+// singleplayer does, and assert the player ends up with data.
+// ---------------------------------------------------------------------------
+{
+  const L = makeVM();
+  runLua(L, `
+    ModData = {
+      getOrCreate = function(k)
+        MODDATA_STORE = MODDATA_STORE or {}
+        MODDATA_STORE[k] = MODDATA_STORE[k] or {}
+        return MODDATA_STORE[k]
+      end,
+    }
+    function getWorld() return { getMetaGrid = function() return nil end } end
+  `, "server-stubs");
+
+  loadFile(L, "shared/TwoManCrew/TwoManCrew_Config.lua");
+  loadFile(L, "server/TwoManCrew/TwoManCrew_CrewState.lua");
+  loadFile(L, "server/TwoManCrew/TwoManCrew_CrewReport.lua");
+  loadFile(L, "client/TwoManCrew/TwoManCrew_CrewReport.lua");
+
+  check(
+    "singleplayer is detected as not networked",
+    evalLua(L, "TwoManCrew.isNetworked()") === false,
+    `isClient/isServer both false`
+  );
+
+  // Press Refresh exactly as the journal window does.
+  runLua(L, `
+    HALO = {}
+    TwoManCrew.Client.lastReport = nil
+    TwoManCrew.Client.requestCrewReport(getPlayer())
+  `, "refresh");
+
+  check(
+    "singleplayer Refresh actually delivers a report to the client",
+    evalLua(L, "TwoManCrew.Client.lastReport ~= nil") === true,
+    `lastReport is ${evalLua(L, "TwoManCrew.Client.lastReport ~= nil") ? "set" : "STILL NIL"}`
+  );
+
+  // Record something, refresh again, and confirm the client sees it. This is
+  // the user-visible fact: the button changes what is on screen.
+  runLua(L, `
+    TwoManCrew.Server.addTally("felled", 2, getPlayer())
+    TwoManCrew.Server.addJournal("felled a tree", getPlayer())
+    TwoManCrew.Client.lastReport = nil
+    TwoManCrew.Client.requestCrewReport(getPlayer())
+  `, "refresh2");
+
+  const tally = evalLua(L, `(TwoManCrew.Client.lastReport and
+    TwoManCrew.Client.lastReport.tally and
+    TwoManCrew.Client.lastReport.tally.felled) or 0`);
+  const entries = evalLua(L, `(TwoManCrew.Client.lastReport and
+    TwoManCrew.Client.lastReport.journal and
+    #TwoManCrew.Client.lastReport.journal) or 0`);
+
+  check(
+    "singleplayer Refresh returns the real tally and journal",
+    tally === 2 && entries === 1,
+    `felled=${tally} (want 2), journal entries=${entries} (want 1)`
+  );
+}
+
+// Claim, singleplayer, end to end.
+{
+  const L = makeVM();
+  runLua(L, `
+    ModData = {
+      getOrCreate = function(k)
+        MODDATA_STORE = MODDATA_STORE or {}
+        MODDATA_STORE[k] = MODDATA_STORE[k] or {}
+        return MODDATA_STORE[k]
+      end,
+    }
+    -- No MetaGrid: the survey finds nothing and must REFUSE, which is still
+    -- an answer. Silence is the failure being tested for.
+    function getWorld() return { getMetaGrid = function() return nil end } end
+  `, "server-stubs");
+
+  loadFile(L, "shared/TwoManCrew/TwoManCrew_Config.lua");
+  loadFile(L, "server/TwoManCrew/TwoManCrew_CrewState.lua");
+  loadFile(L, "server/TwoManCrew/TwoManCrew_Campaign.lua");
+  loadFile(L, "client/TwoManCrew/TwoManCrew_Campaign.lua");
+
+  runLua(L, `
+    HALO = {}
+    TwoManCrew.Client.requestClaim(getPlayer())
+  `, "claim");
+
+  check(
+    "singleplayer Claim gets a verdict instead of hanging on Surveying",
+    evalLua(L, "TwoManCrew.Client.claimPending") === false,
+    `claimPending=${evalLua(L, "TwoManCrew.Client.claimPending")}`
+  );
+
+  const last = evalLua(L, `(HALO[#HALO] and HALO[#HALO].text) or ""`);
+  check(
+    "singleplayer Claim's last message is the answer, not the optimistic line",
+    !String(last).includes("Surveying"),
+    `last message: "${last}"`
+  );
+}
+
+
 // Journal window: button row must sit inside the window, below the list.
 // ---------------------------------------------------------------------------
 {

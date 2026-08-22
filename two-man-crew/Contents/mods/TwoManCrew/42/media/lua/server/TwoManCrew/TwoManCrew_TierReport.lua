@@ -49,10 +49,14 @@ local function onClientCommand(module, command, player, args)
 		end
 	end
 
-	sendServerCommand(player, TwoManCrew.MODULE, "tierProgress", {
+	TwoManCrew.replyToPlayer(player, "tierProgress", {
 		ok = ok,
 		progress = progress,
 	})
 end
 
 Events.OnClientCommand.Add(onClientCommand)
+
+TwoManCrew.registerLocalHandler("requestTierProgress", function(player, args)
+	onClientCommand(TwoManCrew.MODULE, "requestTierProgress", player, args)
+end)

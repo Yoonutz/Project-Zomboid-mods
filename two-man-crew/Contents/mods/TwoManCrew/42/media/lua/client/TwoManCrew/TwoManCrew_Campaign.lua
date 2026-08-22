@@ -37,17 +37,20 @@ function TwoManCrew.Client.requestClaim(player)
 		return
 	end
 
-	print("TwoManCrew[client]: sending requestClaim on module '" ..
-		tostring(TwoManCrew.MODULE) .. "'")
-	sendClientCommand(player, TwoManCrew.MODULE, "requestClaim", {})
+	-- Pending state and the optimistic line BOTH go up before the request is
+	-- dispatched, never after. In singleplayer there is no network: the
+	-- request runs the server handler inline and its reply comes back before
+	-- requestFromServer even returns. Setting claimPending afterwards
+	-- therefore re-raised a flag the reply had just cleared, and the claim
+	-- stayed "pending" forever while the answer sat there already delivered.
+	--
+	-- Ordering it this way makes the two worlds behave identically: solo the
+	-- reply clears a flag that is already set, and in multiplayer it clears it
+	-- whenever the answer arrives.
 	TwoManCrew.Client.claimPending = true
-
-	-- Acknowledge the press immediately. The survey is a server round trip, so
-	-- without this the button looks dead whenever the reply is slow or never
-	-- arrives - which is exactly how a host running an older build, or no
-	-- build at all, presents itself. Silence is the one outcome that tells the
-	-- crew nothing; onServerCommand replaces this with the real verdict.
 	HaloTextHelper.addText(player, "Surveying the block...")
+
+	TwoManCrew.requestFromServer(player, "requestClaim", {})
 
 	-- Give up waiting after ten seconds and say so. A request that is never
 	-- answered used to leave the optimistic line as the final word, which

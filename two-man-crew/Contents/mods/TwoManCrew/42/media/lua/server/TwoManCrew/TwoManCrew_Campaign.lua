@@ -48,12 +48,7 @@ require "TwoManCrew/TwoManCrew_CrewState"
 -- claim works offline. Vanilla uses exactly this guard for systems that must
 -- work in both (server/ClientCommands.lua:1, server/Farming/SFarmingSystem.lua:1,
 -- server/Map/SGlobalObjectSystem.lua:1 - 33 core server files in total).
-print("TwoManCrew[server]: Campaign.lua reached guard, isClient=" ..
-	tostring(isClient()) .. " isServer=" .. tostring(isServer()))
-
 if isClient() then return end
-
-print("TwoManCrew[server]: Campaign.lua LOADED - claim handler is registered")
 
 TwoManCrew.Server = TwoManCrew.Server or {}
 
@@ -268,7 +263,6 @@ end
 -- Handles the client's request to be assigned a claim.
 local function OnClientCommand(module, command, player, args)
 	if module ~= TwoManCrew.MODULE then return end
-	print("TwoManCrew[server]: got command '" .. tostring(command) .. "'")
 	if command ~= "requestClaim" then return end
 	if not player then return end
 
@@ -290,7 +284,7 @@ local function OnClientCommand(module, command, player, args)
 	if not ok then
 		-- claim holds the error message when pcall fails.
 		print("TwoManCrew: claim survey failed: " .. tostring(claim))
-		sendServerCommand(player, TwoManCrew.MODULE, "claimAssigned", {
+		TwoManCrew.replyToPlayer(player, "claimAssigned", {
 			ok = false,
 			reason = "the survey failed - check the console log",
 			count = 0,
@@ -310,7 +304,7 @@ local function OnClientCommand(module, command, player, args)
 		end
 	end
 
-	sendServerCommand(player, TwoManCrew.MODULE, "claimAssigned", {
+	TwoManCrew.replyToPlayer(player, "claimAssigned", {
 		ok = claim ~= nil,
 		reason = reason,
 		count = claim and #claim.buildings or 0,
@@ -320,3 +314,8 @@ local function OnClientCommand(module, command, player, args)
 end
 
 Events.OnClientCommand.Add(OnClientCommand)
+
+-- Same handler, reachable without a network hop when singleplayer.
+TwoManCrew.registerLocalHandler("requestClaim", function(player, args)
+	OnClientCommand(TwoManCrew.MODULE, "requestClaim", player, args)
+end)

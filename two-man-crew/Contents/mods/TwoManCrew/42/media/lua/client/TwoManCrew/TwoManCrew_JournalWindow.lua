@@ -295,7 +295,7 @@ function TwoManCrewJournalWindow:onCheckRestoration()
 	local player = getPlayer()
 	if not player then return end
 
-	sendClientCommand(player, TwoManCrew.MODULE, "requestRestorationCheck", {})
+	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {})
 	HaloTextHelper.addText(player, "Checking the claim...")
 end
 

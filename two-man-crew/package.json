@@ -1,7 +1,7 @@
 {
   "name": "two-man-crew",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Build tooling for the Two-Man Crew Project Zomboid mod. Not packaged into the mod itself.",
   "type": "module",
   "scripts": {

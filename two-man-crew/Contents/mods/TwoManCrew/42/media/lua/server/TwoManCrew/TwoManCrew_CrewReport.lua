@@ -25,11 +25,8 @@ if isClient() then return end
 require "TwoManCrew/TwoManCrew_Config"
 require "TwoManCrew/TwoManCrew_CrewState"
 
-print("TwoManCrew[server]: CrewReport.lua LOADED - refresh handler is registered")
-
 local function onClientCommand(module, command, player, args)
 	if module ~= TwoManCrew.MODULE then return end
-	print("TwoManCrew[server]: CrewReport got '" .. tostring(command) .. "'")
 	if not player then return end
 
 	if command == "requestCrewReport" then
@@ -45,7 +42,7 @@ local function onClientCommand(module, command, player, args)
 
 		if not ok then
 			print("TwoManCrew: crew report failed: " .. tostring(tally))
-			sendServerCommand(player, TwoManCrew.MODULE, "crewReport", {
+			TwoManCrew.replyToPlayer(player, "crewReport", {
 				tally = {},
 				journal = {},
 				failed = true,
@@ -53,7 +50,7 @@ local function onClientCommand(module, command, player, args)
 			return
 		end
 
-		sendServerCommand(player, TwoManCrew.MODULE, "crewReport", {
+		TwoManCrew.replyToPlayer(player, "crewReport", {
 			tally = tally,
 			journal = journal,
 		})
@@ -61,3 +58,10 @@ local function onClientCommand(module, command, player, args)
 end
 
 Events.OnClientCommand.Add(onClientCommand)
+
+-- Singleplayer has no network, so sendServerCommand cannot reach the local
+-- player and OnClientCommand alone is not enough. Registering the SAME
+-- function for local dispatch keeps one implementation serving both worlds.
+TwoManCrew.registerLocalHandler("requestCrewReport", function(player, args)
+	onClientCommand(TwoManCrew.MODULE, "requestCrewReport", player, args)
+end)

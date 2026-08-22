@@ -232,3 +232,82 @@ function TwoManCrew.startCooldown(player, key, seconds)
 	local cooldowns = getCooldownTable(player)
 	cooldowns[key] = getGameTime():getWorldAgeHours()
 end
+
+-- Request/reply across the client-server split, singleplayer included.
+--
+-- ROOT CAUSE this exists to fix, found by instrumenting the live game
+-- (2026-08-22): sendServerCommand does NOT reach the local player in
+-- singleplayer. It is a network send, and solo there is no network client to
+-- deliver to, so Events.OnServerCommand never fires. The log showed the chain
+-- reaching the server fourteen times and replying zero times.
+--
+-- Vanilla never hits this because it never relies on that path solo. Every
+-- shipped caller is multiplayer-only: forageServer.lua bails at line 1 with
+-- `if not isServer() then return end`, and ClientCommands.lua's only reply
+-- targets a player found via getPlayerByOnlineID, which is a multiplayer
+-- lookup. Vanilla's client code makes the round trip conditional instead -
+-- `if isClient() and _character then` at client/Foraging/forageClient.lua:40 -
+-- and calls the logic directly when solo. This mirrors that.
+--
+-- isClient() and isServer() are BOTH false in singleplayer, which is what
+-- makes a single check enough to tell the two worlds apart.
+
+--- True when this game has a real network split - a multiplayer client or a
+--- server. False in singleplayer, where both halves live in one process.
+function TwoManCrew.isNetworked()
+	return isClient() or isServer()
+end
+
+--- Server-side handlers register here so singleplayer can reach them without
+--- a network hop. Keyed by command name.
+TwoManCrew.LocalHandlers = TwoManCrew.LocalHandlers or {}
+
+--- Registers a server handler for local (singleplayer) dispatch. Server files
+--- call this next to their Events.OnClientCommand.Add, so the same function
+--- serves both worlds and the two cannot drift apart.
+function TwoManCrew.registerLocalHandler(command, fn)
+	TwoManCrew.LocalHandlers[command] = fn
+end
+
+--- Sends a command to the server, or runs it directly when singleplayer.
+--- Use this instead of sendClientCommand for anything expecting a REPLY.
+--- Fire-and-forget commands are unaffected: they already work solo, because
+--- OnClientCommand is dispatched locally - it is only the reply that is lost.
+function TwoManCrew.requestFromServer(player, command, args)
+	player = player or getPlayer()
+	if not player then return end
+
+	if TwoManCrew.isNetworked() then
+		sendClientCommand(player, TwoManCrew.MODULE, command, args or {})
+		return
+	end
+
+	local handler = TwoManCrew.LocalHandlers[command]
+	if not handler then
+		-- No local handler means the server file did not register one. Say so
+		-- rather than failing silently, which is the behaviour that made this
+		-- bug cost three wrong builds.
+		print("TwoManCrew: no local handler for '" .. tostring(command) .. "'")
+		return
+	end
+
+	handler(player, args or {})
+end
+
+--- Delivers a reply to the player. In multiplayer this is the normal network
+--- send; in singleplayer it invokes the client's OnServerCommand handlers
+--- directly, because sendServerCommand cannot reach a local player.
+function TwoManCrew.replyToPlayer(player, command, args)
+	if TwoManCrew.isNetworked() then
+		sendServerCommand(player, TwoManCrew.MODULE, command, args or {})
+		return
+	end
+
+	-- triggerEvent is the engine's own way to fire a registered event, so the
+	-- client handlers stay untouched and identical in both worlds.
+	-- Verified: triggerEvent(name, ...) has 85 call sites in the shipped
+	-- source, e.g. client/DebugUIs/DebugMenu/General/ISDebugBlood.lua:74
+	-- triggerEvent("OnClothingUpdated", playerObj) - the event name followed
+	-- by that event's own argument list.
+	triggerEvent("OnServerCommand", TwoManCrew.MODULE, command, args or {})
+end

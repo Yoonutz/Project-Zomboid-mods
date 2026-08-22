@@ -458,7 +458,7 @@ local function OnClientCommand(module, command, player, args)
 		local restoredCount = TwoManCrew.Server.recheckClaim()
 		local claim = TwoManCrew.Server.getClaim()
 
-		sendServerCommand(player, TwoManCrew.MODULE, "restorationChecked", {
+		TwoManCrew.replyToPlayer(player, "restorationChecked", {
 			ok = claim ~= nil,
 			restored = restoredCount,
 			total = claim and #claim.buildings or 0,
@@ -472,7 +472,7 @@ local function OnClientCommand(module, command, player, args)
 		TwoManCrew.Server.recheckClaim()
 		local claim = TwoManCrew.Server.getClaim()
 
-		sendServerCommand(player, TwoManCrew.MODULE, "claimDetail", {
+		TwoManCrew.replyToPlayer(player, "claimDetail", {
 			ok = claim ~= nil,
 			buildings = TwoManCrew.Server.getClaimDetail(),
 		})
@@ -481,3 +481,9 @@ local function OnClientCommand(module, command, player, args)
 end
 
 Events.OnClientCommand.Add(OnClientCommand)
+
+for _, cmd in ipairs({ "requestRestorationCheck", "requestClaimDetail" }) do
+	TwoManCrew.registerLocalHandler(cmd, function(player, args)
+		OnClientCommand(TwoManCrew.MODULE, cmd, player, args)
+	end)
+end
