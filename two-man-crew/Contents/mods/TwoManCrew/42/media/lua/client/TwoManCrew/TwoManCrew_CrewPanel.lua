@@ -220,27 +220,48 @@ function TwoManCrewPanel:prerender()
 	local pad = math.floor(PAD * scale)
 	local line = math.floor(LINE * scale)
 
-	-- Expand on hover, and stay expanded through a drag so the widget does
-	-- not shrink out from under the cursor mid-move. isMouseOver() is the
-	-- Java-backed base implementation and is only meaningful once the element
-	-- has a javaObject, which it has by the time prerender runs.
+	-- The element's SIZE never changes. Only what is drawn inside it does.
+	--
+	-- This is the whole fix for three separate bugs, and the reason the size
+	-- is not recomputed per frame any more. Mouse hit-testing is done by the
+	-- Java object, and the Java object only learns a new size through
+	-- setWidth()/setHeight() (ISUIElement.lua:1136-1160, which forward to
+	-- javaObject:setWidth/setHeight). Assigning self.width directly - which
+	-- is what this function used to do on every frame - updates the Lua field
+	-- that drawing reads while leaving Java's hitbox at whatever it was when
+	-- the element was added to the UIManager.
+	--
+	-- With the widget starting collapsed, that stale hitbox was the 22px
+	-- badge, permanently. Everything followed from that:
+	--   - the expanded panel could not be clicked outside its top-left corner,
+	--   - dragging "snapped out" the moment the pointer left those 22px,
+	--     because PZ then delivered onMouseUpOutside and killed the drag,
+	--   - and "Always show text" made it permanent rather than intermittent.
+	--
+	-- Keeping one fixed hitbox at the expanded size means Lua and Java can
+	-- never disagree. The cost is that the collapsed badge reserves the full
+	-- rectangle; that is invisible (nothing is painted there) and is worth far
+	-- more than a pixel-tight hitbox that does not work.
+	local lines = 2
+	if self.showTally ~= false and self.tally then lines = lines + 1 end
+	if self.showJournal ~= false and self.lastJournal then lines = lines + 1 end
+
+	local wantWidth = math.floor(WIDTH * scale)
+	local wantHeight = pad * 2 + line * lines
+
+	-- Go through the setters, and only when the value actually changed, so
+	-- Java is kept in step without a redundant call every frame.
+	if self.width ~= wantWidth then self:setWidth(wantWidth) end
+	if self.height ~= wantHeight then self:setHeight(wantHeight) end
+
+	-- Hover now decides only what is PAINTED. isMouseOver() is the Java-backed
+	-- base implementation (ISUIElement.lua:414) and is honest again now that
+	-- the Java rectangle matches the real one.
 	self.expanded = self.alwaysExpanded == true or self.pressed or self:isMouseOver()
 
 	if self.expanded then
-		local lines = 2
-		if self.showTally ~= false and self.tally then lines = lines + 1 end
-		if self.showJournal ~= false and self.lastJournal then lines = lines + 1 end
-
-		self.width = math.floor(WIDTH * scale)
-		self.height = pad * 2 + line * lines
 		self:renderExpanded(scale, pad, line)
 	else
-		-- Collapsed the element shrinks to the badge, so the clickable area
-		-- matches what is actually drawn. Leaving it full width would keep an
-		-- invisible rectangle swallowing clicks meant for the game world.
-		local size = math.floor(BADGE * scale)
-		self.width = size
-		self.height = size
 		self:renderCollapsed(scale)
 	end
 end
@@ -289,6 +310,24 @@ function TwoManCrewPanel:onMouseDown(x, y)
 end
 
 function TwoManCrewPanel:onMouseMove(dx, dy)
+	self:dragBy(dx, dy)
+end
+
+-- A fast drag outruns the widget: the pointer leaves the element's rectangle
+-- and PZ starts delivering onMouseMoveOutside instead of onMouseMove. Without
+-- this the panel stopped following the mouse the moment that happened, which
+-- is the "I keep my mouse down and drag and it snaps out" report - motion was
+-- simply no longer being delivered anywhere.
+--
+-- Vanilla handles it by implementing the SAME movement in both handlers
+-- (ISCollapsableWindow.lua:206-236), which is what this mirrors.
+function TwoManCrewPanel:onMouseMoveOutside(dx, dy)
+	self:dragBy(dx, dy)
+end
+
+-- One drag implementation, called from both move handlers so they can never
+-- drift apart.
+function TwoManCrewPanel:dragBy(dx, dy)
 	if not self.pressed or not self.canDrag then return end
 	if dx == 0 and dy == 0 then return end
 
@@ -301,15 +340,13 @@ function TwoManCrewPanel:onMouseUp(x, y)
 	if self.pressed and self.dragMoved then
 		-- Drag finished: persist where it landed, clamped back on screen so a
 		-- panel dragged off the edge is not lost on next login. Clamped against
-		-- the COLLAPSED size, because that is what the widget shrinks back to
-		-- the moment the cursor leaves - clamping to the expanded width would
-		-- let the resting badge sit further off-screen than it should.
+		-- the element's real size, which is now always the expanded one - the
+		-- widget no longer resizes, so there is no second size to choose from.
 		local player = getPlayer()
 		local prefs = TwoManCrew.Prefs.get(player)
-		local badge = math.floor(BADGE * (self.scale or 1.0))
 		prefs.x = self:getX()
 		prefs.y = self:getY()
-		TwoManCrew.Prefs.clampToScreen(prefs, badge, badge)
+		TwoManCrew.Prefs.clampToScreen(prefs, self.width, self.height)
 		self:setX(prefs.x)
 		self:setY(prefs.y)
 	elseif self.pressed and TwoManCrewJournalWindow and TwoManCrewJournalWindow.toggle then
@@ -323,8 +360,24 @@ function TwoManCrewPanel:onMouseUp(x, y)
 	return true
 end
 
--- Mouse leaving the element mid-drag must not strand it in dragging state.
+-- Releasing the button while the pointer is outside the element still ends a
+-- real drag, so it has to SAVE where the panel landed rather than just drop
+-- the state. Previously this threw the position away, so a drag that finished
+-- with the cursor off the widget - which is most of them, since a fast drag
+-- leaves the rectangle - was forgotten by the next login.
+--
+-- It deliberately does not open the journal: a release outside the element is
+-- never a click on it.
 function TwoManCrewPanel:onMouseUpOutside(x, y)
+	if self.pressed and self.dragMoved then
+		local prefs = TwoManCrew.Prefs.get(getPlayer())
+		prefs.x = self:getX()
+		prefs.y = self:getY()
+		TwoManCrew.Prefs.clampToScreen(prefs, self.width, self.height)
+		self:setX(prefs.x)
+		self:setY(prefs.y)
+	end
+
 	self.pressed = false
 	self.canDrag = false
 	self.dragMoved = false
@@ -407,11 +460,17 @@ TwoManCrewPanel.setup = function()
 
 	-- Restore where the player last left it. Defaults put it top-left under the
 	-- vanilla HUD, clear of the moodle stack on the right.
+	-- Created at the FULL size, not the collapsed badge size. The element's
+	-- rectangle is fixed now (see prerender), and the size handed to :new is
+	-- the one the Java object is built with when addToUIManager runs - so
+	-- starting small would hand Java a hitbox the widget never uses again.
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
-	local badge = math.floor(BADGE * (prefs.scale or 1.0))
-	TwoManCrew.Prefs.clampToScreen(prefs, badge, badge)
+	local scale = prefs.scale or 1.0
+	local startWidth = math.floor(WIDTH * scale)
+	local startHeight = math.floor(PAD * scale) * 2 + math.floor(LINE * scale) * 2
+	TwoManCrew.Prefs.clampToScreen(prefs, startWidth, startHeight)
 
-	local panel = TwoManCrewPanel:new(prefs.x, prefs.y, badge, badge)
+	local panel = TwoManCrewPanel:new(prefs.x, prefs.y, startWidth, startHeight)
 	panel:initialise()
 	panel:addToUIManager()
 	panel:setVisible(true)

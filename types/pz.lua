@@ -83,6 +83,12 @@ function getCore() end
 ---@return any
 function getTexture(path) end
 
+--- Real-time clock in milliseconds. Independent of the in-game clock, so it
+--- is what UI timeouts are measured against.
+--- Verified: client/Chat/ISChat.lua:469 and :526.
+---@return number
+function getTimestampMs() end
+
 --- Text metrics. `getTextManager():MeasureStringX(font, text)` returns the
 --- pixel width a string will occupy in that font, which is what right-aligned
 --- and centred UI text is positioned from.

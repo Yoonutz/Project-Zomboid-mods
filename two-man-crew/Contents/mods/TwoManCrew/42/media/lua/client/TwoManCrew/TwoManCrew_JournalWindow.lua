@@ -57,9 +57,15 @@ local ROW = 20
 -- rather than by the button row.
 local BUTTON_W = 28
 
--- Icon drawn inside each button, leaving a couple of pixels of breathing
--- room so the art never touches the button's own border.
-local ICON = 18
+-- Icon drawn inside each button. Deliberately several pixels smaller than
+-- the button so the art never touches its border - at ICON = ROW - 2 the
+-- icon had a single pixel of margin and read as a cramped smudge.
+local ICON = 14
+
+-- Square buttons, sized from the row rather than left at ROW's height. A
+-- 28x20 button holding a square icon wastes width and squashes height; the
+-- button row is the one place in this window where the two want to match.
+local BUTTON_H = 22
 
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape
@@ -90,7 +96,7 @@ local LIVESTOCK_STAGES = {
 -- makes a missing texture degrade to a readable text button rather than an
 -- invisible one - the same nil-safety the panel's badge uses.
 function TwoManCrewJournalWindow:makeIconButton(title, texturePath, tooltip, onclick)
-	local button = ISButton:new(PAD, 0, BUTTON_W, ROW, title, self, onclick)
+	local button = ISButton:new(PAD, 0, BUTTON_W, BUTTON_H, title, self, onclick)
 	button:initialise()
 
 	local texture = getTexture(texturePath)
@@ -202,7 +208,7 @@ function TwoManCrewJournalWindow:layout()
 	-- bottom of every button was overdrawn and the bottom edge swallowed the clicks.
 	-- Reserve the strip and sit the buttons above it.
 	local rh = self.resizable and self:resizeWidgetHeight() or 0
-	local buttonsY = self.height - rh - ROW - PAD
+	local buttonsY = self.height - rh - BUTTON_H - PAD
 
 	-- List stops above the button row, never behind it.
 	local listY = top + ROW
@@ -227,7 +233,7 @@ function TwoManCrewJournalWindow:layout()
 		buttons[i]:setX(x)
 		buttons[i]:setY(buttonsY)
 		buttons[i]:setWidth(BUTTON_W)
-		buttons[i]:setHeight(ROW)
+		buttons[i]:setHeight(BUTTON_H)
 		x = x + BUTTON_W + gap
 	end
 end

@@ -22,11 +22,23 @@ TwoManCrew.Client = TwoManCrew.Client or {}
 -- without asking again.
 TwoManCrew.Client.claimSummary = nil
 
+-- True between sending a claim request and receiving its reply. Used to stop
+-- a second press piling another "Surveying..." on top of the first: repeated
+-- presses were reported as the button "spamming" that line, because each one
+-- printed it again while the first request was still outstanding.
+TwoManCrew.Client.claimPending = false
+
 function TwoManCrew.Client.requestClaim(player)
 	player = player or getPlayer()
 	if not player then return end
 
+	if TwoManCrew.Client.claimPending then
+		HaloTextHelper.addText(player, "Still surveying - wait for the answer")
+		return
+	end
+
 	sendClientCommand(player, TwoManCrew.MODULE, "requestClaim", {})
+	TwoManCrew.Client.claimPending = true
 
 	-- Acknowledge the press immediately. The survey is a server round trip, so
 	-- without this the button looks dead whenever the reply is slow or never
@@ -34,11 +46,39 @@ function TwoManCrew.Client.requestClaim(player)
 	-- build at all, presents itself. Silence is the one outcome that tells the
 	-- crew nothing; onServerCommand replaces this with the real verdict.
 	HaloTextHelper.addText(player, "Surveying the block...")
+
+	-- Give up waiting after ten seconds and say so. A request that is never
+	-- answered used to leave the optimistic line as the final word, which
+	-- reads as a broken button rather than a failure. The timer is cancelled
+	-- by the reply handler; if it fires, the reply genuinely never arrived.
+	local expectAt = getTimestampMs() + 10000
+	local function onTick()
+		if not TwoManCrew.Client.claimPending then
+			Events.OnTick.Remove(onTick)
+			return
+		end
+		if getTimestampMs() < expectAt then return end
+
+		Events.OnTick.Remove(onTick)
+		TwoManCrew.Client.claimPending = false
+
+		local p = getPlayer()
+		if p then
+			HaloTextHelper.addBadText(p, "No answer from the server - claim failed")
+		end
+		TwoManCrew.Client.lastClaimRefusal = "no answer from the server"
+	end
+
+	Events.OnTick.Add(onTick)
 end
 
 local function onServerCommand(module, command, args)
 	if module ~= TwoManCrew.MODULE then return end
 	if command ~= "claimAssigned" then return end
+
+	-- The answer arrived: release the guard and cancel the timeout, whatever
+	-- the verdict turns out to be.
+	TwoManCrew.Client.claimPending = false
 
 	local player = getPlayer()
 	if not player or not args then return end

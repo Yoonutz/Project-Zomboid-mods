@@ -266,7 +266,33 @@ local function OnClientCommand(module, command, player, args)
 	if command ~= "requestClaim" then return end
 	if not player then return end
 
-	local claim, reason = TwoManCrew.Server.assignClaim(player)
+	-- The survey runs under pcall so that a reply is ALWAYS sent.
+	--
+	-- This is the fix for "Claim a block just spams Surveying the block...".
+	-- The client prints that line optimistically the moment it sends the
+	-- request, and replaces it when the verdict arrives. If anything in the
+	-- survey raised - a nil MetaGrid, a building def without rooms, any bad
+	-- assumption in scoring - the error propagated out of this handler and
+	-- sendServerCommand below was never reached. The client then waited for
+	-- a reply that could not come, so the only thing on screen stayed the
+	-- optimistic line, forever, with nothing naming the cause.
+	--
+	-- A failed survey is now an answer ("the survey failed") rather than
+	-- silence, and the reason is written to the log for diagnosis.
+	local ok, claim, reason = pcall(TwoManCrew.Server.assignClaim, player)
+
+	if not ok then
+		-- claim holds the error message when pcall fails.
+		print("TwoManCrew: claim survey failed: " .. tostring(claim))
+		sendServerCommand(player, TwoManCrew.MODULE, "claimAssigned", {
+			ok = false,
+			reason = "the survey failed - check the console log",
+			count = 0,
+			totalUnits = 0,
+			restored = 0,
+		})
+		return
+	end
 
 	-- restored is what the journal window renders as "X of Y buildings
 	-- restored". Without it the window reads summary.restored as nil and shows

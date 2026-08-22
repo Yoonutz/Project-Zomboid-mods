@@ -30,8 +30,25 @@ local function onClientCommand(module, command, player, args)
 	if not player then return end
 
 	if command == "requestCrewReport" then
-		local tally = TwoManCrew.Server.getTally()
-		local journal = TwoManCrew.Server.getJournal()
+		-- Read the state under pcall so a reply is always sent. If reading the
+		-- shared ModData raised - a partially written save, a schema change -
+		-- the error left this handler before sendServerCommand and the client
+		-- sat waiting for a reply that never came. From the player's side that
+		-- is a Refresh button that does nothing at all, with no error naming
+		-- the cause, which is exactly how it was reported.
+		local ok, tally, journal = pcall(function()
+			return TwoManCrew.Server.getTally(), TwoManCrew.Server.getJournal()
+		end)
+
+		if not ok then
+			print("TwoManCrew: crew report failed: " .. tostring(tally))
+			sendServerCommand(player, TwoManCrew.MODULE, "crewReport", {
+				tally = {},
+				journal = {},
+				failed = true,
+			})
+			return
+		end
 
 		sendServerCommand(player, TwoManCrew.MODULE, "crewReport", {
 			tally = tally,
