@@ -19,6 +19,7 @@ acting on its topic.
 - [server-files-need-isclient-guard](server-files-need-isclient-guard.md) — every `server/` file needs `if isClient() then return end`; PZ loads that folder on MP clients too, and the failure is invisible in singleplayer
 - [pz-mod-icons-are-generated](pz-mod-icons-are-generated.md) — TwoManCrew UI icons come from `make-icons.py` character grids; edit the grid and re-run, and ASCII-render to check the shape reads
 - [pz-ui-size-must-go-through-setters](pz-ui-size-must-go-through-setters.md) — PZ hit-tests against the Java object; raw `self.width` resizes the drawing but not the hitbox
+- [pz-hot-reload-lua-without-restarting](pz-hot-reload-lua-without-restarting.md) — `reloadLuaFile()` re-runs a mod file live; safe only for files registering no events, and close the window first or a ghost renders the old code
 - [pz-verification-is-ingame-only](pz-verification-is-ingame-only.md) — the fengari UI harness was deleted by decision; `npm run check` never executes a line, so a UI claim is proved in-game or reported Unverified
 - [pz-journal-campaign-is-task-cards](pz-journal-campaign-is-task-cards.md) — the Campaign view is tabbed task cards built from data the client already had; the done/failed/unreadable three-mark rule must never become a boolean
 - [no-verification-scaffolding](no-verification-scaffolding.md) — never write a test or probe ad-hoc; `superpowers:test-driven-development` must be invoked first, otherwise verify by diffing origin/master
