@@ -114,14 +114,18 @@ end
 -- Takes a BuildingDef directly (what metaGrid:getAssociatedBuildingAt(x, y)
 -- returns), not an IsoBuilding - see the chunk-loading note at the top of
 -- this file for why the survey no longer resolves squares first.
+--
+-- Second return is the raw room count (not the unit score), so B7's
+-- MIN_CLAIM_ROOMS gate can sum actual rooms across a claim without a second
+-- pass over every BuildingDef.
 local function scoreBuilding(def)
-	if not def then return 0 end
+	if not def then return 0, 0 end
 
 	local rooms = def:getRooms()
-	if not rooms then return 0 end
+	if not rooms then return 0, 0 end
 
 	local count = rooms:size()
-	if count == 0 then return 0 end
+	if count == 0 then return 0, 0 end
 
 	local units = 0
 	for i = 0, count - 1 do
@@ -134,7 +138,7 @@ local function scoreBuilding(def)
 		end
 	end
 
-	return units
+	return units, count
 end
 
 -- Walks the sample grid and returns candidate buildings keyed by building id,
@@ -175,7 +179,7 @@ local function surveyBuildings(centreX, centreY)
 			if def then
 				local id = def:getIDString()
 				if id and not found[id] then
-					local units = scoreBuilding(def)
+					local units, roomCount = scoreBuilding(def)
 
 					stats.seen = stats.seen + 1
 					if units > stats.biggest then stats.biggest = units end
@@ -192,6 +196,9 @@ local function surveyBuildings(centreX, centreY)
 						found[id] = {
 							id = id,
 							units = units,
+							-- B7: raw room count (not the unit score), so the claim-time
+							-- gate can sum actual rooms across the CHOSEN buildings only.
+							rooms = roomCount,
 							x = centreX + dx,
 							y = centreY + dy,
 							-- Footprint, for adjacency (tier 2). nil when the
@@ -216,6 +223,9 @@ end
 -- Picks a subset whose total work lands inside the band. Buildings are taken in
 -- a shuffled order so two crews on the same spot do not get identical claims,
 -- and the walk stops as soon as adding one more would overshoot the ceiling.
+--
+-- Third return is the summed room count across the CHOSEN buildings only (not
+-- every candidate the survey saw) - what B7's MIN_CLAIM_ROOMS gate checks.
 local function chooseClaim(candidates)
 	-- Fisher-Yates over a Lua array. ZombRand(n) yields 0..n-1.
 	for i = #candidates, 2, -1 do
@@ -225,16 +235,18 @@ local function chooseClaim(candidates)
 
 	local claim = {}
 	local total = 0
+	local totalRooms = 0
 
 	for _, entry in ipairs(candidates) do
 		if total + entry.units <= TARGET_MAX_UNITS then
 			table.insert(claim, entry)
 			total = total + entry.units
+			totalRooms = totalRooms + (entry.rooms or 0)
 		end
 		if total >= TARGET_MIN_UNITS then break end
 	end
 
-	return claim, total
+	return claim, total, totalRooms
 end
 
 -- True when the crew already holds a claim. The claim is set once and never
@@ -287,11 +299,25 @@ function TwoManCrew.Server.assignClaim(player)
 		)
 	end
 
-	local buildings, total = chooseClaim(candidates)
+	local buildings, total, totalRooms = chooseClaim(candidates)
 	if total < TARGET_MIN_UNITS then
 		return nil, string.format(
 			"not enough here for a campaign - %d usable buildings, %d work units of the %d needed (%d rejected as too big)",
 			stats.kept, stats.keptUnits, TARGET_MIN_UNITS, stats.tooBig
+		)
+	end
+
+	-- B7: refuse a claim too small to be worth claiming. A single shed can
+	-- clear the unit band above (its floor area alone gives it enough units)
+	-- while still being one room, so this checks room count separately rather
+	-- than trusting the unit total to imply it. Claim-time only, per the task:
+	-- a claim that was legal when made must stay legal for the rest of the
+	-- campaign, so this never re-runs mid-campaign.
+	local minRooms = TwoManCrew.Restoration.MIN_CLAIM_ROOMS
+	if minRooms and totalRooms < minRooms then
+		return nil, string.format(
+			"that block is too small - find one with more buildings (%d rooms here, need %d)",
+			totalRooms, minRooms
 		)
 	end
 

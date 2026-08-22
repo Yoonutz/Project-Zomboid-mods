@@ -87,6 +87,17 @@
 --   instanceof(obj, "IsoHutch")              server/Map/MapObjects/MOHutch.lua:44
 --   hutch:getAnimalInside()                  client/ISUI/Hutch/ISHutchMenu.lua:57,
 --                                            client/ISUI/Animal/ISDesignationAnimalZoneUI.lua:286
+--   obj.water on a trough ModData             server/FeedingTrough/SFeedingTroughGlobalObject.lua:17-19
+--                                            (a NUMBER - the stocked water level)
+--   obj.feedAmount on a trough ModData        server/FeedingTrough/SFeedingTroughGlobalObject.lua:38-40,
+--                                            keys declared server/FeedingTrough/SFeedingTroughSystem.lua:19,22
+--                                            (a TABLE keyed by feed type, NOT a number -
+--                                            checking it as a number is the easy mistake here)
+--
+-- UNVERIFIED SERVER-SIDE, cited only in client UI (ISAnimalUI.lua:244), used
+-- pcall'd below the same as isWild/isDead:
+--   animal:getMother()
+--   animal:isExistInTheWorld()
 --
 -- UNVERIFIED, fallback used per GOALS.md's own stated fallback clause:
 -- no server-side precedent was found in the installed vanilla source for
@@ -245,6 +256,68 @@ local function countTroughsOnClaim(claim)
 	return count
 end
 
+-- Counts feeding troughs on the claim that are actually STOCKED - water above
+-- zero, or at least one feed type loaded. A trough that was built once and
+-- never filled should not satisfy "The Trough" forever on a single carpentry
+-- act.
+--
+-- Deliberately a SEPARATE count from countTroughsOnClaim rather than that
+-- function filtered in place: L2 ("First Stock") needs "a trough exists" and
+-- L1 ("The Trough") needs "a trough is stocked", and those are different
+-- claims about the same object. Collapsing them into one count would make
+-- whichever caller runs second silently inherit the other's meaning.
+--
+-- Reuses the same enumeration and bounding-box test as countTroughsOnClaim -
+-- same system, same claim geometry - so this is not a second walk of the
+-- object list's logic, only an extra stocked test per matching object.
+--
+-- obj.water is a NUMBER; obj.feedAmount is a TABLE keyed by feed type, NOT a
+-- number - see the file header citations. "Stocked" means the table has at
+-- least one entry, not that it is truthy or non-zero.
+--
+-- The stocked test is pcall'd on its own, same defensive shape as isWild /
+-- isDead above: an unreadable trough counts as NOT stocked, the strict
+-- reading, so a broken read can never hand out a free pass.
+--
+-- Returns nil under the same conditions as countTroughsOnClaim (system
+-- unavailable, or the claim has no footprints).
+local function countStockedTroughsOnClaim(claim)
+	if not SFeedingTroughSystem or not SFeedingTroughSystem.instance then
+		return nil
+	end
+
+	local x1, y1, x2, y2 = claimBounds(claim)
+	if not x1 then return nil end
+
+	local system = SFeedingTroughSystem.instance
+	local ok, count = pcall(function()
+		local total = 0
+		for i = 1, system:getLuaObjectCount() do
+			local obj = system:getLuaObjectByIndex(i)
+			if obj and obj.x and obj.y then
+				if obj.x >= x1 and obj.x <= x2 and obj.y >= y1 and obj.y <= y2 then
+					local okStocked, stocked = pcall(function()
+						if obj.water and obj.water > 0 then return true end
+						if type(obj.feedAmount) == "table" then
+							for _ in pairs(obj.feedAmount) do
+								return true
+							end
+						end
+						return false
+					end)
+					if okStocked and stocked then
+						total = total + 1
+					end
+				end
+			end
+		end
+		return total
+	end)
+
+	if not ok then return nil end
+	return count
+end
+
 -- ---------------------------------------------------------------------------
 -- Livestock counting (fallback: proximity census, see file header)
 -- ---------------------------------------------------------------------------
@@ -293,9 +366,67 @@ local function censusNearbyAnimals()
 							local obj = movers:get(j)
 							if obj and instanceof(obj, "IsoAnimal") and not seen[obj] then
 								seen[obj] = true
-								total = total + 1
-								if obj:isBaby() then
-									babies = babies + 1
+								-- L1 EXPLOIT FIX: a WILD animal is not stock.
+								-- This loop used to count every IsoAnimal it saw,
+								-- so a wild rabbit or deer wandering within
+								-- CREW_RADIUS satisfied "First Stock" and fed
+								-- "The Herd" with no husbandry at all. Playtested
+								-- 0.10.6: the livestock track completed itself.
+								--
+								-- isWild() is verified present but only ever
+								-- called in client UI (ISAnimalContextMenu.lua:153,
+								-- 166, 307, 1171), never server-side in the shipped
+								-- source. pcall keeps a missing method from taking
+								-- the whole tier pass down with it, and an
+								-- unreadable flag is treated as WILD - the strict
+								-- reading, so a broken check cannot hand out a free
+								-- pass. This is the same defensive shape the file
+								-- already uses for SFeedingTroughSystem.
+								local okWild, wild = pcall(function() return obj:isWild() end)
+								if okWild and wild ~= true then
+									total = total + 1
+									if obj:isBaby() then
+										-- L4 EXPLOIT FIX: a baby seen near the crew used to
+										-- count as evidence of breeding on its own, but the
+										-- mod's own trap code spawns juvenile animals
+										-- directly (server/Traps/STrapGlobalObject.lua:207-236),
+										-- so a crew could trap a juvenile, release it by the
+										-- pen, and satisfy "The Herd" with no breeding at all.
+										--
+										-- getMother() and isExistInTheWorld() are pcall'd like
+										-- every other animal getter here - see the file header,
+										-- server-side use is unproven.
+										--
+										-- INVERTED strictness, on purpose - do not "fix" this
+										-- to match isWild/isDead above. Several species set
+										-- needMom = false in their own definitions (chick,
+										-- mousepup, raccoonkit, ratbaby, turkeypoult), so a
+										-- mother link is meaningless for them by design. This
+										-- file has no verified way to read an IsoAnimal's
+										-- species back off the object, so those species cannot
+										-- be told apart from a genuinely unreadable getMother()
+										-- call. Treating "unreadable or nil" as a FAILURE would
+										-- make the herd stage impossible for exactly the
+										-- species most likely to be farmed - a false failure
+										-- here is worse than the exploit it closes, because it
+										-- makes a campaign stage unwinnable rather than merely
+										-- easy. So unreadable-or-nil is PERMISSIVE: it falls
+										-- back to the old isBaby()-only acceptance instead of
+										-- rejecting the baby.
+										local okMother, mother = pcall(function() return obj:getMother() end)
+										if not okMother or mother == nil then
+											babies = babies + 1
+										else
+											local okExist, exists = pcall(function() return mother:isExistInTheWorld() end)
+											if okExist and exists == true then
+												babies = babies + 1
+											end
+											-- else: a real mother reference exists but could not
+											-- be confirmed alive in world - not counted, the
+											-- strict reading, same as everywhere else in this
+											-- file except the permissive fallback above.
+										end
+									end
 								end
 							end
 						end
@@ -307,9 +438,34 @@ local function censusNearbyAnimals()
 							local obj = objects:get(j)
 							if obj and instanceof(obj, "IsoHutch") and not seenHutch[obj] then
 								seenHutch[obj] = true
+								-- L3 EXPLOIT FIX: occupied must mean LIVING.
+								-- size() > 0 counted a hutch holding a dead or
+								-- dying animal, so a crew could stuff anything in
+								-- moments before the check and let it die after.
+								--
+								-- isDead() has a real server-side precedent
+								-- (server/Traps/STrapGlobalObject.lua:238), unlike
+								-- most animal getters, which are client-only. It is
+								-- still pcall'd: this runs inside the tier pass, and
+								-- one missing method must not stop the whole
+								-- campaign from scoring.
 								local inside = obj:getAnimalInside()
 								if inside and inside:size() > 0 then
-									occupiedHutches = occupiedHutches + 1
+									local living = false
+									for k = 0, inside:size() - 1 do
+										local animal = inside:get(k)
+										if animal then
+											local okDead, dead = pcall(function() return animal:isDead() end)
+											-- Unreadable is treated as NOT living, matching
+											-- the strict reading used for isWild above.
+											if okDead and dead ~= true then
+												living = true
+											end
+										end
+									end
+									if living then
+										occupiedHutches = occupiedHutches + 1
+									end
 								end
 							end
 						end
@@ -461,6 +617,7 @@ local function evaluateBuildingTier(tier, claim, restoredCount, tiersState)
 		-- so this approximates "held since" as elapsed hours since
 		-- completion, converted to a night-equivalent via a fixed 24h/night.
 		local heldHours = nowHours - tiersState.allRestoredSinceHours
+
 		return heldHours >= (TIER5_HOLD_NIGHTS * 24) and nightsSurvived > 0
 	end
 
@@ -476,9 +633,22 @@ local function evaluateLivestockStage(stage, tiersState, animalTotal, animalBabi
 		-- Deliberately does NOT verify the enclosure is fenced - no verified
 		-- enclosure test exists in the engine's Lua surface. The stage
 		-- description says so rather than implying more than is checked.
-		local troughs = countTroughsOnClaim(claim)
-		if troughs ~= nil then
-			return troughs >= 1
+		--
+		-- L1 EXPLOIT FIX: a trough used to satisfy this stage the instant it
+		-- was built - one carpentry act, satisfied forever, even if it sat
+		-- empty the whole campaign. Gated on REQUIRE_STOCKED_TROUGH so the
+		-- config can still fall back to the old "exists" reading if the
+		-- stocked check ever proves too strict in play.
+		if TwoManCrew.Livestock.REQUIRE_STOCKED_TROUGH then
+			local stocked = countStockedTroughsOnClaim(claim)
+			if stocked ~= nil then
+				return stocked >= 1
+			end
+		else
+			local troughs = countTroughsOnClaim(claim)
+			if troughs ~= nil then
+				return troughs >= 1
+			end
 		end
 
 		-- Could not read the trough system, or the claim predates footprints.
@@ -491,7 +661,27 @@ local function evaluateLivestockStage(stage, tiersState, animalTotal, animalBabi
 	elseif stage == 2 then
 		-- Real-ish check (fallback census, see file header): at least one
 		-- living animal currently seen near the crew.
-		return animalTotal >= 1
+		if animalTotal < 1 then return false end
+
+		-- L2 EXPLOIT FIX: an animal merely wandering near the crew used to
+		-- satisfy "First Stock" on its own, tamed or not - even with the wild
+		-- filter in countNearbyAnimals, a tame animal that just wandered by
+		-- still passed. Requiring a trough too proves the crew built the pen
+		-- first. countTroughsOnClaim reads the map-wide global object system
+		-- (see file header), not loaded ground, so this adds no new
+		-- chunk-loading dependency to the census's existing three-state
+		-- contract - it is evaluated independently of animalTotal.
+		--
+		-- Unreadable (nil) is treated as NOT satisfied here, the same strict
+		-- reading used for isWild/isDead above: this is a brand-new
+		-- requirement being added, not a replacement for an existing check,
+		-- so there is no old fallback for it to defer to.
+		if TwoManCrew.Livestock.REQUIRE_TROUGH_FOR_STOCK then
+			local troughs = countTroughsOnClaim(claim)
+			if not troughs or troughs < 1 then return false end
+		end
+
+		return true
 	elseif stage == 3 then
 		-- Real check: a hutch with at least one animal inside it. Only
 		-- confirmable while a crew member is near the hutch - IsoHutch has no
@@ -556,8 +746,44 @@ end
 -- These prints report the real cost per pass. Read them with `npm run diagnose`
 -- or by grepping the log for TMC_PERF, then DELETE this instrumentation once the
 -- number is known - it is a measurement, not a feature.
+-- H1 PROBE - instrumentation, not a rule. DELETE THIS once the log answers it.
+--
+-- THE QUESTION: tier 5 asks the crew to HOLD the block, but the hold check only
+-- measures elapsed time. A crew that boards itself into a basement for seven
+-- nights passes exactly like a crew defending a street. The intended fix is to
+-- require zombie kills during the hold window - but getZombieKills() appears in
+-- ZERO server-side files in the shipped source. Only two client UI files call it
+-- (client/ISUI/PlayerStats/ISPlayerStatsUI.lua:57 and
+-- client/XpSystem/ISUI/ISCharacterScreen.lua:228), so whether it reads at all
+-- from server Lua is unknown.
+--
+-- Reading source cannot settle that; only a running game can. This is the repo's
+-- own instrument-first rule, and it is exactly what settled the same question
+-- about pcall.
+--
+-- WHAT TO DO: load a session, then grep the log for TMC_PROBE.
+--   a number  -> the counter reads server-side; the kill-based hold can ship
+--   nil / ERR -> it does not; fall back to isOutside(), which IS proven
+--                server-side (SadisticMusicDirector.lua:64) but is weaker,
+--                since standing in a walled yard would satisfy it
+--
+-- Fires once per session rather than every pass: the answer never changes
+-- within a session, and a line every ten minutes is log spam, not evidence.
+local probeDone = false
+
+local function probeZombieKills()
+	if probeDone then return end
+	probeDone = true
+	for _, p in ipairs(TwoManCrew.getAllPlayers()) do
+		local ok, kills = pcall(function() return p:getZombieKills() end)
+		print("TMC_PROBE zombieKills readable=" .. tostring(ok)
+			.. " value=" .. tostring(ok and kills or "ERR"))
+	end
+end
+
 local function evaluateTiers()
 	local perfStart = getTimestampMs()
+	probeZombieKills()
 	local function perfDone(where)
 		print("TMC_PERF evaluateTiers ms=" .. (getTimestampMs() - perfStart) .. " exit=" .. where)
 	end

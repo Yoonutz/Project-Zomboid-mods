@@ -89,6 +89,43 @@ TwoManCrew.Restoration = {
 	-- A metal sheet or metal bars count instead of planks. Both are strictly
 	-- more work than boards, so refusing them would punish the better job.
 	ACCEPT_METAL = true,
+
+	-- B5: how long a crew member must stay at the building before a pass banks.
+	-- The old rule was a single distance test on one tick, so walking past a
+	-- house at the moment the server polled was enough to witness it.
+	PRESENCE_HOURS = 2,
+
+	-- B7: a claim must be worth claiming. Summed room count across the claim's
+	-- buildings, read chunk-free from BuildingDef, so a lone shed cannot farm a
+	-- tier. Rejected at claim time, never mid-campaign.
+	MIN_CLAIM_ROOMS = 6,
+
+	-- B9: loose items lying on the floor read as debris and block a pass.
+	-- ONLY items directly on the ground count - anything inside a container is
+	-- the crew's stockpile, not litter, and must never fail the check. Kami's
+	-- call 2026-08-22: a crew staging planks mid-build is working, not messy.
+	MAX_FLOOR_ITEMS = 0,
+
+	-- B10: a finished building is spot-checked later, and a stripped barricade
+	-- or a fresh corpse sends it back to unfinished. Hours between samples.
+	-- This deliberately reverses the old "restoration is an achievement, not a
+	-- live-held state" rule; tier 5 asks the crew to HOLD the block, so a
+	-- building that quietly rots was never really held.
+	RECHECK_HOURS = 24,
+}
+
+-- L-track: the livestock stages. Every number here was a bare literal in
+-- TwoManCrew_Tiers.lua, which made the campaign's difficulty invisible to
+-- anyone not reading the scoring code.
+TwoManCrew.Livestock = {
+	-- L2/L4 count animals near the crew. A trough on the claim proves the crew
+	-- built the infrastructure first, rather than a loose animal wandering by.
+	REQUIRE_TROUGH_FOR_STOCK = true,
+
+	-- L1 used to pass the instant a trough existed - one carpentry act, done
+	-- forever, even if it sat empty all campaign. It must now hold feed or
+	-- water. Read chunk-free from the trough's own global-object state.
+	REQUIRE_STOCKED_TROUGH = true,
 }
 
 -- Returns a plain Lua array of every player this machine can currently see.

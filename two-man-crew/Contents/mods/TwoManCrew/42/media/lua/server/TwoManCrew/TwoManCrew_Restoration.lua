@@ -2,9 +2,29 @@
 --
 -- Decides whether a claimed building counts as "restored": ground-floor
 -- windows boarded/replaced, every doorway has a working door, no corpse
--- remains, and a crew member present to witness it. The GOALS.md "crew-built
--- furniture per room" condition was dropped as unimplementable - see the
--- CREW PRESENCE block below for why, and for what replaced it.
+-- remains, no loose items left on the floor, and a crew member present long
+-- enough to witness it. The GOALS.md "crew-built furniture per room"
+-- condition was dropped as unimplementable - see the CREW PRESENCE block
+-- below for why, and for what replaced it.
+--
+-- Per-room memory: each RoomDef's worst-seen state persists in the claim's
+-- ModData (keyed by building id + roomDef:getID()), because a sprawling
+-- building is rarely fully loaded in one pass. A room seen broken stays
+-- broken until a later pass sees it clean; a building only banks once every
+-- one of its rooms has, at some point, been individually confirmed clean.
+-- Rooms never visited stay unknown forever and hold the building pending -
+-- they never fail it and never pass it.
+--
+-- Presence is accumulated, not instantaneous: standing next to a building for
+-- one tick used to be enough to "witness" it. Elapsed in-game hours while a
+-- crew member is nearby now add up in the claim's ModData, across visits,
+-- until TwoManCrew.Restoration.PRESENCE_HOURS is reached.
+--
+-- A banked building is re-spot-checked, not permanent: every
+-- TwoManCrew.Restoration.RECHECK_HOURS hours it is re-walked (at most one
+-- building per pass, staggered) and demoted back to unfinished if it now
+-- genuinely fails. It is never demoted on "unknown" - an unloaded building
+-- cannot be punished for being unreadable.
 --
 -- CHUNK-LOADING CONSTRAINT (same one TwoManCrew_Campaign.lua documents at
 -- its header): a dedicated server only simulates IsoGridSquares near online
@@ -41,6 +61,8 @@
 --   windowFrame:hasWindow()                               client/DebugUIs/DebugContextMenu.lua:381
 --   door:isBarricaded()                                   shared/Moveables/ISMoveableSpriteProps.lua:907
 --   getGameTime():getWorldAgeHours()                      server/Farming/SFarmingSystem.lua:258
+--   roomDef:getID()                                       stable per-room integer, chunk-free (BuildingDef data)
+--   instanceof(obj, "IsoWorldInventoryObject")            client/DebugUIs/ISRemoveItemTool.lua:85-86
 
 require "TwoManCrew/TwoManCrew_Config"
 require "TwoManCrew/TwoManCrew_CrewState"
@@ -235,6 +257,28 @@ local function squareHasCorpse(square)
 	return false
 end
 
+-- REAL CHECK: loose items left lying on the ground.
+--
+-- IsoWorldInventoryObject identifies an item placed directly on a square,
+-- distinct from anything living inside a container (verified at
+-- client/DebugUIs/ISRemoveItemTool.lua:85-86 - it is the type the debug "remove
+-- item" tool matches to find loose ground items). square:getObjects() only
+-- ever returns objects placed ON the square, never a container's contents, so
+-- this count can never see inside a crate, bag, or shelf - a crew staging
+-- planks mid-build is never counted here. Only true floor litter fails the
+-- check, per the owner's explicit instruction.
+local function squareFloorItemCount(square)
+	local count = 0
+	local objects = square:getObjects()
+	for i = 0, objects:size() - 1 do
+		local obj = objects:get(i)
+		if obj and instanceof(obj, "IsoWorldInventoryObject") then
+			count = count + 1
+		end
+	end
+	return count
+end
+
 -- CREW PRESENCE: a rule in its own right, not a fallback.
 --
 -- This used to stand in for "each room contains crew-built furniture". That
@@ -244,21 +288,38 @@ end
 -- ModData - see ISBuildIsoEntity.lua, which never calls setModData).
 --
 -- Rather than delete the check along with the goal, the crew-presence half is
--- kept deliberately: a building counts as restored only while a crew member is
--- standing near it. Restoration is something the crew witnesses, not something
--- that happens off-screen. Implemented as crewPresentNear() below.
+-- kept deliberately: a building counts as restored only once a crew member has
+-- spent TwoManCrew.Restoration.PRESENCE_HOURS of accumulated in-game time
+-- standing near it. Restoration is something the crew witnesses over time,
+-- not a single lucky tick someone happened to be walking past. Implemented as
+-- crewPresentNear() (instantaneous test) plus the presence-hours accumulator
+-- in checkBuildingRestored() below.
 
 -- ---------------------------------------------------------------------------
 -- Building-level check
 -- ---------------------------------------------------------------------------
 
--- Walks a building's ground floor (z = 0) rooms and evaluates the three real
--- checks (windows, doors, corpses). Returns:
---   status:  "restored" | "not_restored" | "unknown"
---   detail:  { windowsOk, doorsOk, noCorpses, roomsSeen, roomsTotal,
---              squaresSeen, fullyCovered }
--- "unknown" means not enough of the building's ground floor is loaded to
--- trust a verdict either way - never guessed as pass or fail.
+-- Walks a building's ground floor (z = 0) rooms and evaluates the real
+-- checks (windows, doors, corpses, floor litter), per room. Returns:
+--   status:  "seen" | "unknown"
+--   detail:  { windowsOk, doorsOk, noCorpses, boardedOk, floorClearOk,
+--              floorItemCount, roomsSeen, roomsTotal, squaresSeen,
+--              fullyCovered, roomResults }
+-- "unknown" here means NOTHING on the ground floor loaded this pass - not
+-- even partial data. "seen" means at least one room was readable this pass;
+-- it says nothing about pass/fail on its own; that verdict now comes from
+-- TASK 1's per-room memory (below), because a sprawling building is rarely
+-- ever fully loaded in a single pass. roomResults is a map of
+-- [roomDef:getID()] = true/false for every room that HAD a loaded square this
+-- pass - the caller (checkBuildingRestored) merges this into the claim's
+-- persisted room memory. A room absent from roomResults was not loaded this
+-- pass and must be left untouched by the caller, not guessed at.
+--
+-- windowsOk/doorsOk/noCorpses/boardedOk/floorClearOk are THIS PASS'S rollup
+-- over whatever was loaded (matches the pre-existing display contract); the
+-- pass/fail decision for banking purposes is computed by the caller from
+-- persisted per-room memory instead, since this pass alone may only cover
+-- part of the building.
 local function checkBuildingSquares(def)
 	local rooms = def:getRooms()
 	if not rooms then
@@ -275,8 +336,10 @@ local function checkBuildingSquares(def)
 	local doorsOk = true
 	local noCorpses = true
 	local boardedOk = true
+	local floorItemCount = 0
 	local roomsSeen = 0
 	local squaresSeen = 0
+	local roomResults = {}
 
 	for i = 0, roomCount - 1 do
 		local room = rooms:get(i)
@@ -285,6 +348,11 @@ local function checkBuildingSquares(def)
 			local y1, y2 = room:getY(), room:getY2()
 			if x1 and x2 and y1 and y2 then
 				local roomHadLoadedSquare = false
+				local roomWindowsOk = true
+				local roomDoorsOk = true
+				local roomNoCorpses = true
+				local roomBoardedOk = true
+				local roomFloorItems = 0
 				for x = x1, x2 do
 					for y = y1, y2 do
 						local square = cell:getGridSquare(x, y, 0)
@@ -293,21 +361,35 @@ local function checkBuildingSquares(def)
 							squaresSeen = squaresSeen + 1
 							if not squareWindowsRestored(square) then
 								windowsOk = false
+								roomWindowsOk = false
 							end
 							if not squareDoorsRestored(square) then
 								doorsOk = false
+								roomDoorsOk = false
 							end
 							if squareHasCorpse(square) then
 								noCorpses = false
+								roomNoCorpses = false
 							end
 							if not squareOpeningsBoarded(square) then
 								boardedOk = false
+								roomBoardedOk = false
 							end
+							local items = squareFloorItemCount(square)
+							floorItemCount = floorItemCount + items
+							roomFloorItems = roomFloorItems + items
 						end
 					end
 				end
 				if roomHadLoadedSquare then
 					roomsSeen = roomsSeen + 1
+					local roomId = room:getID()
+					if roomId then
+						local roomOk = roomWindowsOk and roomDoorsOk and roomNoCorpses
+							and roomBoardedOk
+							and roomFloorItems <= TwoManCrew.Restoration.MAX_FLOOR_ITEMS
+						roomResults[roomId] = roomOk
+					end
 				end
 			end
 		end
@@ -321,10 +403,9 @@ local function checkBuildingSquares(def)
 		}
 	end
 
-	-- Partial load: some rooms seen, not all. Still report what was found,
-	-- but do not claim full coverage - callers can decide whether partial
-	-- evidence is good enough (recheckClaim keeps it pending either way,
-	-- since a hidden broken window in an unseen room would be missed).
+	-- Partial load this pass: some rooms seen, not all. Reported for display
+	-- only now - banking no longer requires fullyCovered in a single pass,
+	-- see the per-room memory merge in checkBuildingRestored.
 	local fullyCovered = (roomsSeen == roomCount)
 
 	local detail = {
@@ -332,21 +413,16 @@ local function checkBuildingSquares(def)
 		doorsOk = doorsOk,
 		noCorpses = noCorpses,
 		boardedOk = boardedOk,
+		floorItemCount = floorItemCount,
+		floorClearOk = floorItemCount <= TwoManCrew.Restoration.MAX_FLOOR_ITEMS,
 		roomsSeen = roomsSeen,
 		roomsTotal = roomCount,
 		squaresSeen = squaresSeen,
 		fullyCovered = fullyCovered,
+		roomResults = roomResults,
 	}
 
-	if not fullyCovered then
-		return "unknown", detail
-	end
-
-	if windowsOk and doorsOk and noCorpses and boardedOk then
-		return "candidate_restored", detail
-	end
-
-	return "not_restored", detail
+	return "seen", detail
 end
 
 -- Is any crew member currently standing at the claimed building? This is the
@@ -368,13 +444,20 @@ end
 -- Checks one claimed building entry (as stored in claim.buildings - see
 -- TwoManCrew_Campaign.lua's state.claim.buildings shape: { id, units, x, y }).
 -- Returns:
---   restored:bool  - true only when every condition passed AND a crew member
---                     was present. false covers both "checked and failed" and
---                     "not yet checkable" so callers get a safe default;
---                     check detail.status for the real reason.
+--   restored:bool  - true only when every room has, across all visits, been
+--                     individually confirmed clean AND accumulated presence
+--                     has reached PRESENCE_HOURS. false covers "checked and
+--                     genuinely not there yet" and "not yet checkable" so
+--                     callers get a safe default; check detail.status.
 --   detail:table   - { status = "restored"|"not_restored"|"unknown",
---                       windowsOk, doorsOk, noCorpses, crewPresent,
---                       roomsSeen, roomsTotal, fullyCovered, reason }
+--                       windowsOk, doorsOk, noCorpses, boardedOk,
+--                       floorClearOk, floorItemCount, crewPresent,
+--                       presenceHours, presenceRequired, roomsSeen,
+--                       roomsTotal, fullyCovered, reason }
+--                     presenceHours/presenceRequired are informational extras
+--                     beyond the four original flags, for a journal that wants
+--                     to show progress; absent when there is no active claim
+--                     to accumulate them in (see the fallback branch below).
 function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 	if not buildingEntry or not buildingEntry.x or not buildingEntry.y then
 		return false, { status = "unknown", reason = "bad building entry" }
@@ -400,13 +483,13 @@ function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 	-- a crash - which is exactly how it was reported, with the log ending
 	-- mid-frame on the claim press and no exception anywhere.
 	--
-	-- Crew presence is a hard precondition: checkBuildingSquares' verdict can
-	-- only ever become "restored" when someone stands within CREW_RADIUS (12
-	-- tiles). A building nobody is near cannot pass however the walk turns
-	-- out, so walking it is pure waste. Testing presence first is a distance
-	-- comparison per player - a couple of arithmetic ops - and it skips the
-	-- walk for every building except the one or two a crew member is actually
-	-- standing at. Same verdicts, bounded cost.
+	-- Presence is now accumulated rather than instantaneous (TASK 2/B5), but
+	-- the walk only ever teaches us anything new about a building's squares
+	-- while someone is standing close enough to have loaded them - so testing
+	-- instantaneous presence first is still a correct, cheap filter: it skips
+	-- the walk for every building except the one or two a crew member is
+	-- actually standing at, with no loss of information (an absent building's
+	-- squares are not freshly knowable anyway).
 	local crewPresent = crewPresentNear(buildingEntry.x, buildingEntry.y)
 
 	if not crewPresent then
@@ -429,30 +512,152 @@ function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 		return false, detail
 	end
 
-	detail.crewPresent = crewPresent
+	detail.crewPresent = true
 
-	-- crewPresent is necessarily true here: the absent case returned above,
-	-- before the walk. The "otherwise finished but nobody home" verdict it
-	-- used to produce is now the early return, with the same status and the
-	-- same reason string, so the client's rendering is unchanged.
-	if status == "candidate_restored" then
-		detail.status = "restored"
-		return true, detail
+	-- TASK 1 (B4): merge this pass's per-room verdicts into the claim's
+	-- persisted memory. A room absent from detail.roomResults was not loaded
+	-- this pass and is left untouched - its last known state (or "never
+	-- seen") persists exactly as it was. A room present is unconditionally
+	-- overwritten with this pass's fresh verdict: that is what lets a room
+	-- seen broken stay broken, and what lets a later clean pass clear it.
+	--
+	-- TASK 2 (B5): accumulate presence hours for this building while a crew
+	-- member is confirmed near it (we only reach this line when crewPresent
+	-- is true). The elapsed time since the last PRESENT sample is added to a
+	-- running total that is never reset by itself; only the "since when" ---
+	-- baseline resets when a sample finds nobody present, so a real absence
+	-- is never retroactively counted as presence.
+	--
+	-- Both need the persisted claim; TwoManCrew.Server.checkBuildingRestored
+	-- is public and may be called directly (not just via recheckClaim /
+	-- getClaimDetail), so this degrades gracefully to a single-pass,
+	-- non-memoized verdict when there is no active claim to write into.
+	local state = TwoManCrew.Server.getState()
+	local claim = state and state.claim
+	local bId = buildingEntry.id
+
+	local anyRoomDirty = false
+	local knownRoomCount = 0
+	local presenceHours = nil
+	local presenceOk
+
+	if claim and bId ~= nil then
+		claim.roomState = claim.roomState or {}
+		claim.roomState[bId] = claim.roomState[bId] or {}
+		local rooms = claim.roomState[bId]
+		for roomId, roomOk in pairs(detail.roomResults or {}) do
+			rooms[roomId] = roomOk
+		end
+		for _, roomOk in pairs(rooms) do
+			knownRoomCount = knownRoomCount + 1
+			if not roomOk then anyRoomDirty = true end
+		end
+
+		claim.presenceHours = claim.presenceHours or {}
+		claim.presenceLastSeen = claim.presenceLastSeen or {}
+		local nowHours = getGameTime():getWorldAgeHours()
+		local lastSeen = claim.presenceLastSeen[bId]
+		if lastSeen and nowHours > lastSeen then
+			claim.presenceHours[bId] = (claim.presenceHours[bId] or 0) + (nowHours - lastSeen)
+		end
+		claim.presenceLastSeen[bId] = nowHours
+
+		presenceHours = claim.presenceHours[bId] or 0
+		presenceOk = presenceHours >= TwoManCrew.Restoration.PRESENCE_HOURS
+	else
+		-- No persisted claim to accumulate into - fall back to this pass's
+		-- own coverage/flags only, same shape the file used before TASK 1/2.
+		anyRoomDirty = not (detail.windowsOk and detail.doorsOk and detail.noCorpses
+			and detail.boardedOk and detail.floorClearOk)
+		knownRoomCount = detail.roomsSeen
+		presenceOk = true -- instantaneous presence already confirmed above
 	end
 
-	detail.status = "not_restored"
-	return false, detail
+	detail.presenceHours = presenceHours
+	detail.presenceRequired = TwoManCrew.Restoration.PRESENCE_HOURS
+
+	if anyRoomDirty then
+		-- A known-broken room is a real, checkable failure - not "unknown",
+		-- however many other rooms remain unseen.
+		detail.status = "not_restored"
+		return false, detail
+	end
+
+	if knownRoomCount < detail.roomsTotal then
+		-- Every room seen so far is clean, but at least one has never been
+		-- visited. Honestly unresolved, per the three-state rule: this must
+		-- not fail the building and must not pass it either.
+		detail.status = "unknown"
+		detail.reason = "some rooms never visited yet"
+		return false, detail
+	end
+
+	if not presenceOk then
+		detail.status = "not_restored"
+		detail.reason = "not enough time spent here yet"
+		return false, detail
+	end
+
+	detail.status = "restored"
+	return true, detail
+end
+
+-- TASK 4 (B10): is a banked building due for its periodic spot check?
+-- claim.lastRecheckHours[buildingId] holds the getWorldAgeHours() reading at
+-- the last attempt (whatever its outcome); nil means never attempted, which
+-- is always due.
+local function dueForRecheck(claim, buildingId, nowHours)
+	local last = claim.lastRecheckHours and claim.lastRecheckHours[buildingId]
+	if not last then return true end
+	return (nowHours - last) >= TwoManCrew.Restoration.RECHECK_HOURS
+end
+
+-- TASK 4 (B10): re-verifies ONE already-banked building that is due, and
+-- demotes it if it genuinely fails. The owner explicitly reversed the old
+-- "restoration is an achievement, not a live-held state" rule: tier 5 asks
+-- the crew to hold the block, so a banked building that quietly rots was
+-- never really held.
+--
+-- Sampled, not swept: only the first due building found is rechecked, so a
+-- pass through a large claim costs at most one extra square-walk, never one
+-- per banked building. Being "due" is per-building (RECHECK_HOURS since that
+-- building's own last attempt), so across enough passes every banked
+-- building gets its turn without ever costing more than one per pass.
+--
+-- Never demotes on "unknown" (nobody there / not loaded) - that would punish
+-- absence with a guess, which is exactly what the three-state rule in this
+-- file exists to prevent. "unknown" and "restored" both just record the
+-- attempt and move on; only a real "not_restored" clears the banked flag, so
+-- the ordinary re-walk-and-rebank path (below, in recheckClaim/
+-- getClaimDetail) can pick it back up once it is fixed.
+local function recheckOneBankedBuilding(claim)
+	if not claim or not claim.buildings or not claim.restored then return end
+	claim.lastRecheckHours = claim.lastRecheckHours or {}
+	local nowHours = getGameTime():getWorldAgeHours()
+
+	for _, entry in ipairs(claim.buildings) do
+		if claim.restored[entry.id] and dueForRecheck(claim, entry.id, nowHours) then
+			claim.lastRecheckHours[entry.id] = nowHours
+			local _, detail = TwoManCrew.Server.checkBuildingRestored(entry)
+			if detail.status == "not_restored" then
+				claim.restored[entry.id] = nil
+				TwoManCrew.Server.addJournal(
+					"a restored building slipped and needs attention again ("
+						.. entry.units .. " work units)"
+				)
+			end
+			return -- stagger: at most one recheck attempt per pass
+		end
+	end
 end
 
 -- Rescans every building in the crew's claim and updates
 -- state.claim.restored[buildingId] = true for each one that now passes.
--- Never clears a previously-true entry: once restored, a building stays
--- counted even if a later zombie wanders in and a corpse reappears -
--- GOALS.md's tier design counts restoration as an achievement, not a
--- live-held state (only tier 5's "hold the block" condition is about
--- persistence, and that is a separate nights-survived counter, not this
--- one). Buildings still "unknown" are left untouched so a later call can
--- pick them up once loaded.
+-- Never clears a previously-true entry ON ITS OWN - the periodic spot check
+-- above (TASK 4/B10) is the one thing allowed to demote a banked building,
+-- and it is called from here too so a "/crew check" rescan also samples one
+-- banked building for rot. Buildings still "unknown" are left untouched so a
+-- later call can pick them up once loaded.
 --
 -- CALL-SITE DESIGN (why this is not a tick handler): a full rescan walks
 -- every square of every claimed building's ground floor - for a claim near
@@ -476,6 +681,8 @@ function TwoManCrew.Server.recheckClaim()
 	if not claim then return 0 end
 
 	claim.restored = claim.restored or {}
+
+	recheckOneBankedBuilding(claim)
 
 	for _, entry in ipairs(claim.buildings) do
 		if not claim.restored[entry.id] then
@@ -511,14 +718,22 @@ end
 --   { id, units, x, y,
 --     status     = "restored"|"not_restored"|"unknown",
 --     alreadyDone = boolean,  -- true if previously banked (see below)
---     windowsOk, doorsOk, noCorpses, crewPresent,  -- may be nil when unknown
---     roomsSeen, roomsTotal, reason }
+--     windowsOk, doorsOk, noCorpses, boardedOk, floorClearOk, crewPresent,
+--       -- may be nil when unknown
+--     roomsSeen, roomsTotal, reason,
+--     presenceHours, presenceRequired }  -- extra, see checkBuildingRestored
 function TwoManCrew.Server.getClaimDetail()
 	local state = TwoManCrew.Server.getState()
 	local claim = state.claim
 	if not claim or not claim.buildings then return {} end
 
 	claim.restored = claim.restored or {}
+
+	-- TASK 4 (B10): sample one banked building for rot before reporting, so
+	-- the journal can show a demotion the same call it happened in. A banked
+	-- building normally is NOT re-walked below (cheap report for the common
+	-- case); this is the one exception, and it costs at most one extra walk.
+	recheckOneBankedBuilding(claim)
 
 	local report = {}
 	for _, entry in ipairs(claim.buildings) do
@@ -530,9 +745,8 @@ function TwoManCrew.Server.getClaimDetail()
 		}
 
 		if claim.restored[entry.id] then
-			-- Already banked. Restoration is an achievement, not a live-held
-			-- state, so do not re-walk it and do not let a wandering corpse
-			-- un-restore it - matching recheckClaim's contract.
+			-- Already banked and not due (or not yet found) for its spot
+			-- check this pass, so do not re-walk it here.
 			row.status = "restored"
 			row.alreadyDone = true
 		else
@@ -555,10 +769,15 @@ function TwoManCrew.Server.getClaimDetail()
 			row.doorsOk = detail.doorsOk
 			row.noCorpses = detail.noCorpses
 			row.boardedOk = detail.boardedOk
+			row.floorClearOk = detail.floorClearOk
 			row.crewPresent = detail.crewPresent
 			row.roomsSeen = detail.roomsSeen
 			row.roomsTotal = detail.roomsTotal
 			row.reason = detail.reason
+			-- Extra, beyond the four original flags: lets a journal show
+			-- accumulated witness time (TASK 2/B5) instead of just pass/fail.
+			row.presenceHours = detail.presenceHours
+			row.presenceRequired = detail.presenceRequired
 		end
 
 		table.insert(report, row)

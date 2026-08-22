@@ -891,6 +891,18 @@ function TwoManCrewJournalWindow.describeRow(row)
 	if row.noCorpses == false then table.insert(todo, "corpses") end
 	if row.boardedOk == false then table.insert(todo, "boarding") end
 	if row.crewPresent == false then table.insert(todo, "nobody here") end
+	if row.floorClearOk == false then table.insert(todo, "clutter") end
+
+	-- Presence is now accumulated across visits, not an instant check, so a
+	-- building can be held up purely by the clock while everything else passes.
+	-- Without this line that state listed no reason at all and fell through to
+	-- "blocked - check the logs", which reads as a fault when the crew is in
+	-- fact doing exactly the right thing: standing there. Show the countdown.
+	if row.presenceHours and row.presenceRequired
+		and row.presenceHours < row.presenceRequired then
+		table.insert(todo, string.format("time on site (%d of %d hours)",
+			math.floor(row.presenceHours), math.floor(row.presenceRequired)))
+	end
 
 	if #todo == 0 then
 		return "blocked - check the logs"
