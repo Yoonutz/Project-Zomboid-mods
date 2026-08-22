@@ -44,5 +44,4 @@ Only running the game and reading `~/Zomboid/Logs/` showed which link was broken
   `requestFromServer` returns. Set any pending flag or optimistic message BEFORE dispatching, or
   the reply clears it and the next line re-raises it forever. That bug cost a build on its own.
 
-Related: [[pz-instrument-before-fixing-runtime-faults]], [[server-files-need-isclient-guard]],
-[[pz-run-the-ui-not-just-the-parser]].
+Related: [[pz-instrument-before-fixing-runtime-faults]], [[server-files-need-isclient-guard]].

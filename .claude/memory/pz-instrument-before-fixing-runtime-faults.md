@@ -37,7 +37,7 @@ three in a row destroys trust far more than saying "I need one run to find out".
   nothing about the new build; twice this session an old log nearly produced a false conclusion.
 - Asking the user for one two-minute run is cheaper than one wrong build. Ask early.
 - There is no local suite at all now, so the log is the only evidence. See
-  [[pz-run-the-ui-not-just-the-parser]].
+  [[pz-verification-is-ingame-only]].
 
-Related: [[pz-run-the-ui-not-just-the-parser]], [[pz-ui-size-must-go-through-setters]],
+Related: [[pz-verification-is-ingame-only]], [[pz-ui-size-must-go-through-setters]],
 [[pz-runs-lua-5-1-kahlua]].

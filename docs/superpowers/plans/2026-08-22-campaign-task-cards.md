@@ -10,7 +10,7 @@
 
 ---
 
-> **STATUS: all tasks written, NOT TESTED. Branch `feature/campaign-task-cards`, 2026-08-22, version `0.4.0`.**
+> **STATUS: all tasks written, NOT TESTED. 2026-08-22, version `0.4.0`.**
 >
 > **This code has never been executed.** No Project Zomboid session has loaded
 > it. Nothing here is known to work.

@@ -21,9 +21,10 @@ When a fault only appears in-game, the move is instrumentation first and a fix
 second — ship `print()` calls, ask for one run, then fix what the log names. Asking
 for a two-minute run is cheaper than a wrong build.
 
-**The installed copy is deliberately behind the repo.** It is pinned so it matches
-the other player in a co-op save. An install/repo version gap is intended, not drift
-to be tidied away.
+**The installed copy may deliberately sit behind the repo.** It is sometimes pinned
+so it matches the other player in a co-op save. An install/repo version gap is
+intended, not drift to be tidied away. Whether a gap exists right now is a question
+for `node deploy.mjs --check`, never for a number written here.
 
 **The language is Lua 5.1**, not current Lua. The game embeds Kahlua, so `goto`,
 `table.unpack`, integer division and bitwise operators do not exist here.

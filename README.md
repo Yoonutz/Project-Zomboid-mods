@@ -31,9 +31,16 @@ example-mod/     worked example: one item, one Lua hook, both verified
 
 ## Local testing
 
-Copy (or symlink) `<your-mod>/Contents/mods/<YourModID>/` into
-`~/Zomboid/mods/<YourModID>/`, then enable it from the in-game Mods menu.
-`/reloadlua` in the debug console reloads Lua without restarting; item/recipe
+Copy `<your-mod>/Contents/mods/<YourModID>/` into `~/Zomboid/mods/<YourModID>/`,
+then enable it from the in-game Mods menu.
+
+**Copy, never symlink.** A directory junction here was removed on 2026-08-22 after
+it caused a multiplayer version mismatch, and the tooling refuses to write through
+one — deleting a link's contents deletes the repo's. See `docs/conventions/deploy.md`.
+
+TwoManCrew has this automated: `node deploy.mjs` from `two-man-crew/`.
+
+`/reloadlua` in the debug console reloads Lua without restarting; item and recipe
 script changes need a full restart. See `docs/pz-modding-guide/testing.md`.
 
 ## Why the folder structure looks like this
@@ -46,8 +53,10 @@ and `mod-structure.md`.
 
 ## Status
 
-`example-mod/`'s item script and Lua hook are written against verified B42
-syntax and event names (see file-level comments citing the doc source) but
-have **not been loaded in-game** — no PZ install was available to test against
-in this workspace. Verify in-game before treating them as more than a syntax
+`example-mod/`'s item script and Lua hook are written against verified B42 syntax
+and event names (see the file-level comments citing the doc source) but have **not
+been loaded in-game**. Verify in-game before treating them as more than a syntax
 reference.
+
+`two-man-crew/` is the active mod and carries the build tooling for the whole
+workspace: `npm run check`, `npm run deploy`, `npm run diagnose`.

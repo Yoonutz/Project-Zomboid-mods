@@ -21,11 +21,17 @@ node deploy.mjs --check   compare repo vs installed version, writes nothing
 
 Ask first. Deploying replaces the mod folder under a live session.
 
-## The install is deliberately pinned behind the repo
+## The install may be pinned behind the repo
 
-As of 2026-08-22 the install sits at `0.1.0` to match the other player in a co-op
-save, while the repo is ahead. **Do not "sync" the install to the repo without
-asking.**
+The install is sometimes held at an older version deliberately, to match the other
+player in a co-op save. **Never "sync" the install to the repo without asking.**
+
+Do not trust any version number written in prose here — this section has been
+wrong before. Ask the tooling instead:
+
+```
+node deploy.mjs --check
+```
 
 To install a past version without disturbing the working tree, extract it from its
 commit:

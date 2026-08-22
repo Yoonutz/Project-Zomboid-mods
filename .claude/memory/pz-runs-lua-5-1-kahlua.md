@@ -33,4 +33,13 @@ Zero-usage counts show what is idiomatic, not a hard proof a function is absent.
 by word-boundary grep over the shipped source - see
 [[pz-vanilla-source-is-the-api-reference]], which stays the highest-confidence check.
 
+**Open, needs one game run.** TwoManCrew calls `pcall` at 7 sites, all of them the
+error handling that makes Claim and Refresh always send a reply
+(`Campaign.lua:366`, `CrewReport.lua:39`, `TierReport.lua:45`, `Tiers.lua:231`
+and `:334`, `MastersMark.lua:42`). Vanilla uses `pcall` in 0 of 1,395 files and
+never defines it, which says it is unidiomatic here, not that Kahlua lacks it.
+Until someone loads a session and exercises Claim and Refresh, treat those seven
+sites as UNVERIFIED rather than broken. Do not remove them on the strength of the
+zero-usage count alone - that count is not evidence of absence.
+
 Related: [[pz-api-doc-sources-ranked]], [[pz-lua-diagnostics-setup]].

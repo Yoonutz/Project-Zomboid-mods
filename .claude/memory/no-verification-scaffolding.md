@@ -38,6 +38,7 @@ repo's existing checks. When something cannot be verified without new scaffoldin
 needing the game to actually run - report it unverified rather than building scaffolding to
 manufacture proof.
 
-Related: [[pz-run-the-ui-not-just-the-parser]] (what the existing suite covers - run it),
-[[pz-instrument-before-fixing-runtime-faults]] (instrumenting the live game is a different
-activity from writing a test, and is still the right move for a runtime fault).
+Related: [[pz-verification-is-ingame-only]] (the suite this used to point to is gone -
+this is how verification works now), [[pz-instrument-before-fixing-runtime-faults]]
+(instrumenting the live game is a different activity from writing a test, and is
+still the right move for a runtime fault).

@@ -36,4 +36,4 @@ misbehaves - so it reads as a drag bug, a hover bug and a click bug rather than 
   duplicates the movement in both (`client/ISUI/ISCollapsableWindow.lua:206-236`).
 - `onMouseUpOutside` ends a real drag too, so it must save state, not discard it.
 
-Related: [[pz-vanilla-source-is-the-api-reference]], [[pz-run-the-ui-not-just-the-parser]].
+Related: [[pz-vanilla-source-is-the-api-reference]].

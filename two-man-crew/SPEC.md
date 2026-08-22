@@ -110,7 +110,7 @@ profession name.
 - [ ] Server re-validates distance and skill; client never awards anything
 - [ ] Degrades silently to a no-op when the player is alone
 - [ ] No use of any function absent from the verified list above
-- [ ] Passes `luacheck` if available, or parses cleanly under `luac -p`
+- [ ] Passes `npm run check` — parses under luaparse, server guards present, no dangling calls, mod.info copies agree
 
 ## Not done here
 
