@@ -1,57 +1,72 @@
 ---
 name: pz-status
-description: Use when checking whether a TwoManCrew build is installed, whether the game is running, or whether the mod has thrown anything - and before reporting any claim about what the player is running or what their log says.
+description: Reports what TwoManCrew build is installed and what the live log says. Use when the user asks if the mod is copied, whether the game is running, what the log shows, or before claiming anything about their install.
+allowed-tools: Bash, Read
 ---
 
 # pz-status
 
-One pass over everything worth knowing about a TwoManCrew build: what is installed,
-whether it matches the repo, whether the game is running, and what the **live** log says.
+## Goal
 
-Replaces five hand-run commands that were being repeated several times an hour.
+Answer, in one pass, everything about a TwoManCrew build: whether the game is running,
+whether the installed tree matches the repo file by file, which log is live, what the mod
+threw and where, and the worst cost per background pass. Success is a single report that
+needs no follow-up commands. It replaced five that were being re-run several times an hour.
 
-## Run it
+## Inputs
 
-```powershell
-& ".claude/skills/pz-status/status.ps1"          # report only, changes nothing
-& ".claude/skills/pz-status/status.ps1" -Sync    # copy repo -> mods folder first
-```
+- `-Sync` - copy the repo over the mods folder before reporting. Optional; reports only without it.
+- `-Repo`, `-Mods`, `-Logs` - path overrides. All default to this machine's real locations.
 
-`-Sync` refuses while the game is running, and refuses if the destination is a link.
+## Scripts
 
-## What it answers
+- `status.ps1` - does everything below; changes nothing unless `-Sync` is passed.
 
-| Section    | The question it settles                              |
-| ---------- | ---------------------------------------------------- |
-| GAME       | Is Project Zomboid running right now                 |
-| SYNC       | Did the copy happen, or why it was refused           |
-| INSTALL    | Does the installed tree match the repo, file by file |
-| LOG        | Which log is live, and is it stale                   |
-| MOD ERRORS | Which file and line threw, and how many times        |
-| TIMINGS    | Worst cost per pass, flagged if over one frame       |
+## Process
 
-## Two traps it exists to stop
+1. Report only, the normal case:
 
-**A matching version number proves nothing.** A half-copied tree carries the new
-`mod.info` and the old Lua. It looks correct from the outside and behaves like the
-build you thought you replaced. This hashes every file instead.
+   ```powershell
+   & ".claude/skills/pz-status/status.ps1"
+   ```
 
-**A log that stopped updating is from a session that ENDED.** Reading one and
-reporting "no errors" says nothing about the build now installed. That mistake was
-made here once, and produced a confidently wrong answer. The script warns when the
-game is running but the newest log has gone quiet.
+2. Copy first, then report. Refuses while the game runs, and refuses if the destination is a link:
 
-## What it does NOT tell you
+   ```powershell
+   & ".claude/skills/pz-status/status.ps1" -Sync
+   ```
 
-Whether the mod works. Nothing here renders a pixel. A clean report means the code
-loaded and did not throw - not that the panel is usable, laid out correctly, or
-showing the right thing.
+3. Read the INSTALL section. `identical` is the only passing state; a version match alone is not.
 
-Reports still say `Unverified` until someone looks at the screen. See
-`.claude/memory/pz-verification-is-ingame-only.md`.
+4. Read the LOG section for a stale warning BEFORE trusting MOD ERRORS. A quiet log during a
+   running game means the errors shown belong to a session that already ended.
 
-## Hot reload
+5. Report `Unverified` regardless of how clean the output is, until someone has looked at the screen.
 
-For iterating on the journal window without restarting, see
-`.claude/memory/pz-hot-reload-lua-without-restarting.md`. Only that one file is safe
-to reload; every other file hooks events at load and would double-register.
+## Outputs
+
+The ONLY deliverable is the printed report. It writes nothing except during `-Sync`, which
+replaces the installed mod folder.
+
+## Edge Cases
+
+| Situation                            | What happens                                               |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Game running and `-Sync` passed      | Refuses. Deploying under a live session is destructive     |
+| Destination is a junction or symlink | Refuses rather than writing through the link               |
+| Newest log quiet while game runs     | Prints a stale warning; its errors are from a dead session |
+| No claim in the save yet             | TIMINGS reports none; the pass exits early with no work    |
+| Pass costs 16 ms or more             | Flagged as over one frame at 60fps                         |
+
+Two traps this exists for, both hit in real use. A matching version number proves nothing: a
+half-copied tree carries the new `mod.info` and the old Lua, so every file is hashed instead.
+And a log that stopped updating is from a finished session - reading one produced a
+confidently wrong "no errors" here once.
+
+Nothing it prints means the mod works. A clean report means the code loaded and did not throw.
+See `.claude/memory/pz-verification-is-ingame-only.md`, and
+`.claude/memory/pz-hot-reload-lua-without-restarting.md` for iterating without a restart.
+
+## Environment
+
+None. No env vars, no secrets, no network. Paths default to this machine and are overridable.
