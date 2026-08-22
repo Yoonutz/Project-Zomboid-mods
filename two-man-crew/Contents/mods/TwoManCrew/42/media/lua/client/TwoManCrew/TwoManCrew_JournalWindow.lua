@@ -174,6 +174,13 @@ function TwoManCrewJournalWindow:makeIconButton(title, texturePath, tooltip, onc
 		-- fields together (ISButton.lua:222).
 		button.forcedWidthImage = ICON
 		button.forcedHeightImage = ICON
+
+		-- Drop the label once the picture is there. ISButton centres the
+		-- image and then centres the text on top of it (ISButton.lua:247-252),
+		-- so a titled icon button paints the word straight across the art.
+		-- The title survives on the tooltip, which is where a button this
+		-- small should explain itself anyway.
+		button:setTitle("")
 	end
 
 	button.tooltip = tooltip
