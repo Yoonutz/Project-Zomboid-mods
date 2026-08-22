@@ -97,4 +97,20 @@ this repo already vendors a newer B42-targeted guide at
 
 The installed game ships its full Lua source and remains the highest-confidence
 check for anything ambiguous — a doc says what should happen, the source says
-what does.
+what does. It lives here:
+
+```
+D:\Games\Steam\steamapps\common\ProjectZomboid\media\lua\{client,server,shared}
+D:\Games\Steam\steamapps\common\ProjectZomboid\media\ui        # UI textures
+D:\Games\Steam\steamapps\common\ProjectZomboid\media\scripts   # item/recipe scripts
+```
+
+Roughly 1,400 Lua files (728 client, 294 server, 373 shared), 1,004 generated
+item/recipe scripts, and 1,538 UI PNGs, as of Steam buildid 24775755.
+
+Scope every search to a subtree and a file type. `media/` also holds maps,
+models, sound and textures, so an unfiltered recursive walk over the whole
+folder does not finish — `du -sh` on it timed out after two minutes.
+
+A hit under `lua/server/` is what proves a call is server-safe; a hit only
+under `client/DebugUIs/` proves nothing about the shipped game.
