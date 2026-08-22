@@ -1,1 +1,15 @@
-{}
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/two-man-crew/check-lua.mjs\" \"$CLAUDE_PROJECT_DIR/two-man-crew/Contents\""
+          }
+        ]
+      }
+    ]
+  }
+}

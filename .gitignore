@@ -13,4 +13,3 @@ Thumbs.db
 
 # local lua syntax checker deps
 node_modules/
-package-lock.json
