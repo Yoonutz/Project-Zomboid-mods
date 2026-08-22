@@ -1,6 +1,6 @@
 # Declarative tier model, and three new campaign tracks
 
-> **STATUS: design approved, NOT IMPLEMENTED. 2026-08-23, repo version `0.3.1`.**
+> **STATUS: design approved, NOT IMPLEMENTED. 2026-08-23, mod version `0.12.0`.**
 >
 > **This code has never been executed.** No Project Zomboid session has loaded it.
 > Nothing below is known to work.
