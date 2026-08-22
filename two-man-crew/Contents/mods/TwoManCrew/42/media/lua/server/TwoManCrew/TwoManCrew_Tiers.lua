@@ -546,8 +546,23 @@ end
 -- Main evaluation pass
 -- ---------------------------------------------------------------------------
 
+-- TEMPORARY INSTRUMENTATION (0.4.3, 2026-08-22)
+--
+-- The player reports occasional frame spikes. This pass runs on
+-- EveryTenMinutes, which at default speed is roughly every 25 real seconds, and
+-- it scans a 25x25 square block per player plus a building recheck. That is the
+-- shape of an intermittent spike, but shape is not evidence.
+--
+-- These prints report the real cost per pass. Read them with `npm run diagnose`
+-- or by grepping the log for TMC_PERF, then DELETE this instrumentation once the
+-- number is known - it is a measurement, not a feature.
 local function evaluateTiers()
+	local perfStart = getTimestampMs()
+	local function perfDone(where)
+		print("TMC_PERF evaluateTiers ms=" .. (getTimestampMs() - perfStart) .. " exit=" .. where)
+	end
 	if not TwoManCrew.Server.hasClaim or not TwoManCrew.Server.hasClaim() then
+		perfDone("no-claim")
 		return
 	end
 
@@ -573,7 +588,10 @@ local function evaluateTiers()
 	local livestockRemaining = not (tiersState.livestock[1] and tiersState.livestock[2]
 		and tiersState.livestock[3] and tiersState.livestock[4])
 	if livestockRemaining then
+		local censusStart = getTimestampMs()
 		local animalTotal, animalBabies, occupiedHutches = censusNearbyAnimals()
+		print("TMC_PERF census ms=" .. (getTimestampMs() - censusStart)
+			.. " animals=" .. tostring(animalTotal))
 
 		-- Stash what the census actually saw, so getTierProgress can report it.
 		-- Without this the crew sees a stage marked incomplete with no way to
@@ -602,6 +620,7 @@ local function evaluateTiers()
 		-- the moment L4 completed.
 		tiersState.lastCensus = nil
 	end
+	perfDone("full")
 end
 
 -- ---------------------------------------------------------------------------
