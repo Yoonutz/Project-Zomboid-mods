@@ -1081,6 +1081,21 @@ function TwoManCrewJournalWindow:prerender()
 	local summary = TwoManCrew.Client and TwoManCrew.Client.claimSummary
 	local refusal = TwoManCrew.Client and TwoManCrew.Client.lastClaimRefusal
 
+	-- claimSummary only ever arrives as the answer to a Claim press, so after
+	-- a reload the header said "no claim yet" while the view below it listed
+	-- the claim's own buildings. The per-building detail is polled and does
+	-- survive a reload, so fall back to counting that.
+	if not summary then
+		local detail = TwoManCrew.Client and TwoManCrew.Client.lastClaimDetail
+		if detail and #detail > 0 then
+			local restored = 0
+			for _, entry in ipairs(detail) do
+				if entry and entry.status == "restored" then restored = restored + 1 end
+			end
+			summary = { count = #detail, restored = restored }
+		end
+	end
+
 	if summary and summary.count and summary.count > 0 then
 		local restored = summary.restored or 0
 		local text = "Claim: " .. restored .. " of " .. summary.count .. " buildings restored"
