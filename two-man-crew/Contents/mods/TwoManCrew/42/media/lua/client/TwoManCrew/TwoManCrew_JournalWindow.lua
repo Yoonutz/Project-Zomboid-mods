@@ -505,6 +505,32 @@ function TwoManCrewJournalWindow:populateJournal()
 	end
 end
 
+-- Trims a string to fit a pixel width, ending in ".." when it had to cut.
+--
+-- The engine has no clipped-text draw, so an over-long string simply keeps
+-- painting past the panel edge and over whatever is there. Measuring and
+-- trimming is the only way to keep a row readable at any window size.
+function TwoManCrewJournalWindow.fit(text, room, font)
+	text = tostring(text or "")
+	if room <= 0 then return "" end
+
+	font = font or UIFont.Small
+	local manager = getTextManager()
+	if manager:MeasureStringX(font, text) <= room then
+		return text
+	end
+
+	-- Linear scan from the end. These strings are short and this runs once per
+	-- visible row, so a binary search would buy nothing worth the complexity.
+	for i = #text - 1, 1, -1 do
+		local candidate = string.sub(text, 1, i) .. ".."
+		if manager:MeasureStringX(font, candidate) <= room then
+			return candidate
+		end
+	end
+	return ""
+end
+
 -- The Orders briefing.
 --
 -- This replaced a set of click-to-expand cards that printed the database: raw
