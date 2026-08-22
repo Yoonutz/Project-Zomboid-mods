@@ -51,21 +51,19 @@ TwoManCrewJournalWindow = ISCollapsableWindow:derive("TwoManCrewJournalWindow")
 local PAD = 8
 local ROW = 20
 
--- Icon buttons are square. The old 90px text buttons are gone, but the
--- constant survives as the minimum-width term below - three icons need far
--- less room, and the window's real floor is now set by the header text
--- rather than by the button row.
-local BUTTON_W = 28
+-- Icon buttons, sized to be comfortably hittable rather than merely legal.
+--
+-- The first icon pass used 28x22 with a 14px icon, which was reported as
+-- "bugged and small" - and it was: a 14px picture is smaller than the text
+-- label it replaced, so the row looked like a mistake rather than a design.
+-- These are square, generous, and the icon fills most of the face.
+local BUTTON_W = 40
+local BUTTON_H = 40
 
--- Icon drawn inside each button. Deliberately several pixels smaller than
--- the button so the art never touches its border - at ICON = ROW - 2 the
--- icon had a single pixel of margin and read as a cramped smudge.
-local ICON = 14
-
--- Square buttons, sized from the row rather than left at ROW's height. A
--- 28x20 button holding a square icon wastes width and squashes height; the
--- button row is the one place in this window where the two want to match.
-local BUTTON_H = 22
+-- Icon drawn inside each button, leaving an even margin all round. At 28px
+-- inside a 40px button the art reads clearly at a glance and still has room
+-- to breathe against the border.
+local ICON = 28
 
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape

@@ -602,6 +602,29 @@ function crewPanelVM() {
 
     const hasIcons = evalLua(L, `W.refreshButton.image ~= nil and W.claimButton.image ~= nil`);
     check(`journal ${w}x${h}: buttons carry icons, not text labels`, hasIcons === true, "");
+
+    // Size floor. The first icon pass shipped 28x22 buttons holding a 14px
+    // icon and came back as "bugged and small" - and the suite passed it,
+    // because every assertion was about POSITION and none about whether the
+    // result was usable. A button smaller than the text label it replaced is
+    // a regression however neatly it is placed.
+    //
+    // 32px is the floor for a comfortable pointer target; the drawn icon must
+    // fill most of that face rather than floating in it.
+    const bw = evalLua(L, `W.refreshButton:getWidth()`);
+    const bh = evalLua(L, `W.refreshButton:getHeight()`);
+    check(
+      `journal ${w}x${h}: buttons are big enough to hit`,
+      bw >= 32 && bh >= 32,
+      `${bw}x${bh}, floor 32x32`
+    );
+
+    const iconW = evalLua(L, `W.refreshButton.forcedWidthImage or 0`);
+    check(
+      `journal ${w}x${h}: the icon fills its button`,
+      iconW >= bw * 0.6,
+      `icon ${iconW} in ${bw} (needs >= ${Math.round(bw * 0.6)})`
+    );
   }
 }
 

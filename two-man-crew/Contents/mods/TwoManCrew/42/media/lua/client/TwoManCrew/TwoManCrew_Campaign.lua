@@ -37,6 +37,8 @@ function TwoManCrew.Client.requestClaim(player)
 		return
 	end
 
+	print("TwoManCrew[client]: sending requestClaim on module '" ..
+		tostring(TwoManCrew.MODULE) .. "'")
 	sendClientCommand(player, TwoManCrew.MODULE, "requestClaim", {})
 	TwoManCrew.Client.claimPending = true
 

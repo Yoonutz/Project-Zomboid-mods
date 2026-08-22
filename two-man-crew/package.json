@@ -1,7 +1,7 @@
 {
   "name": "two-man-crew",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Build tooling for the Two-Man Crew Project Zomboid mod. Not packaged into the mod itself.",
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "test": "node test-ui.mjs",
     "icons": "python make-icons.py",
     "deploy": "node deploy.mjs",
-    "deploy:check": "node deploy.mjs --check"
+    "deploy:check": "node deploy.mjs --check",
+    "diagnose": "node diagnose.mjs"
   },
   "devDependencies": {
     "fengari": "^0.1.5",

@@ -25,8 +25,11 @@ if isClient() then return end
 require "TwoManCrew/TwoManCrew_Config"
 require "TwoManCrew/TwoManCrew_CrewState"
 
+print("TwoManCrew[server]: CrewReport.lua LOADED - refresh handler is registered")
+
 local function onClientCommand(module, command, player, args)
 	if module ~= TwoManCrew.MODULE then return end
+	print("TwoManCrew[server]: CrewReport got '" .. tostring(command) .. "'")
 	if not player then return end
 
 	if command == "requestCrewReport" then
