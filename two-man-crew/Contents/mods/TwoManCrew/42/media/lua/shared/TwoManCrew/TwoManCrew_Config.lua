@@ -70,6 +70,27 @@ TwoManCrew.DistressCall = {
 	RANGE_TILES = 30,        -- how far a distress call can reach beyond crew radius
 }
 
+-- WHY THIS EXISTS: every other restoration condition tested the ABSENCE of
+-- damage - an unbroken window, a doorway that still has its door, no corpse
+-- inside. A house nobody had touched satisfied all of them on day one, so
+-- claiming a block completed tiers with no work done. Playtested 0.10.6.
+--
+-- Barricades are the fix because the map never spawns one. The only things that
+-- create a barricade are the player's own timed action (ISBarricadeAction) and
+-- a debug-only trailer scenario. So requiring planks is a direct measure of
+-- crew labour rather than of luck about how the house spawned.
+TwoManCrew.Restoration = {
+	-- Planks required on each ground-floor opening. Vanilla's own "fully
+	-- boarded" test is 4 (client/DebugUIs/DebugContextMenu.lua:372); 2 is a
+	-- deliberately gentler starting bar, since the step from zero to any
+	-- barricade is where the difficulty actually comes from.
+	MIN_PLANKS = 2,
+
+	-- A metal sheet or metal bars count instead of planks. Both are strictly
+	-- more work than boards, so refusing them would punish the better job.
+	ACCEPT_METAL = true,
+}
+
 -- Returns a plain Lua array of every player this machine can currently see.
 --
 -- THE BUG THIS REPLACES: every server-side and shared caller used

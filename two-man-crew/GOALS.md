@@ -36,7 +36,20 @@ A building counts as restored when all of these hold:
 - every broken window on its ground floor is boarded or replaced
 - every doorway has a working door
 - no zombie corpse remains inside it
+- **every ground-floor opening that can take a barricade is boarded** - windows,
+  window frames and doors alike, whether or not they were ever broken
 - a crew member is present to witness it
+
+The boarding condition is what makes the rest mean anything. The other three test
+the _absence of damage_: an unbroken window was never broken, an untouched doorway
+still has its door, an unvisited house holds no corpses. A house nobody had
+touched satisfied all three the day it was claimed, which is why playtesting found
+tiers completing with no work done.
+
+Barricades cannot be inherited from the map. Nothing in the shipped game spawns
+one - the only creators are the player's own barricade action and a debug-only
+scenario. So boarding is the one condition that can only be true because a crew
+member stood there and did the work.
 
 Each condition is observable from the game's own state, so the mod checks rather than takes the
 player's word for it. The original fourth condition - crew-built furniture in every room - was

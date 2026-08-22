@@ -110,6 +110,79 @@ local function squareWindowsRestored(square)
 	return true
 end
 
+-- REAL CHECK: every ground-floor opening is actually boarded.
+--
+-- This is the condition that makes the campaign a job of work. Every other
+-- check here tests the ABSENCE of damage, so an untouched house passed them
+-- all on day one and a claimed block completed tiers with nobody lifting a
+-- hammer. Barricades cannot be inherited from the map: the only creators in
+-- the shipped source are the player's own ISBarricadeAction
+-- (shared/TimedActions/ISBarricadeAction.lua:22-33) and a debug-only trailer
+-- scenario (client/DebugUIs/Scenarios/Trailer2Scenario.lua:213). A barricade
+-- therefore proves a crew member stood there and did the work.
+--
+-- The barricade is read with getBarricadeOnSameSquare()/OppositeSquare(), NOT
+-- getBarricadeForCharacter(). The character-free pair is what the game's own
+-- server code uses (server/BuildRecipeCode/buildRecipeCode.lua:52-59), so the
+-- verdict does not depend on which player happens to be nearby - it stays
+-- server-authoritative, which matters because this is multiplayer by default.
+-- An opening may be boarded from either side; either side counts.
+--
+-- isBarricadeAllowed()/getCanBarricade() gates the whole thing
+-- (buildRecipeCode.lua:50). Some openings cannot take a barricade at all, and
+-- demanding one there would make the building impossible to finish.
+local function barricadeSatisfies(barricade)
+	if not barricade then return false end
+	local cfg = TwoManCrew.Restoration
+	if cfg.ACCEPT_METAL and (barricade:isMetal() or barricade:isMetalBar()) then
+		return true
+	end
+	return barricade:getNumPlanks() >= cfg.MIN_PLANKS
+end
+
+local function openingIsBoarded(obj)
+	-- Either face of the opening may carry the boards.
+	return barricadeSatisfies(obj:getBarricadeOnSameSquare())
+		or barricadeSatisfies(obj:getBarricadeOnOppositeSquare())
+end
+
+-- An OPEN door cannot be barricaded - the game's own action refuses it
+-- (shared/TimedActions/ISBarricadeAction.lua:42-46, which returns false for an
+-- IsoDoor or door-like IsoThumpable whose IsOpen() is true). Without this the
+-- check would demand boards on a door nobody is able to board, and the crew
+-- could never finish the building. Treat an open door as not-an-opening rather
+-- than as a failure: closing it brings it back into scope on the next pass.
+local function isOpenDoor(obj)
+	if instanceof(obj, "IsoDoor") or (instanceof(obj, "IsoThumpable") and obj:isDoor()) then
+		return obj:IsOpen()
+	end
+	return false
+end
+
+local function squareOpeningsBoarded(square)
+	local objects = square:getObjects()
+	for i = 0, objects:size() - 1 do
+		local obj = objects:get(i)
+		if obj then
+			local isOpening = instanceof(obj, "IsoWindow")
+				or instanceof(obj, "IsoWindowFrame")
+				or instanceof(obj, "IsoDoor")
+			if isOpening and obj:isBarricadeAllowed() and not isOpenDoor(obj)
+				and not openingIsBoarded(obj) then
+				return false
+			end
+			-- A doorway that lost its door reverts to an IsoThumpable, which
+			-- carries getCanBarricade() rather than isBarricadeAllowed().
+			if instanceof(obj, "IsoThumpable") and obj:getCanBarricade()
+				and (obj:isDoor() or obj:isWindow()) and not isOpenDoor(obj)
+				and not openingIsBoarded(obj) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
 -- REAL CHECK: doorway has a working door.
 -- instanceof(obj, "IsoDoor") identifies a hung door
 -- (server/BuildRecipeCode/buildRecipeCode.lua:27). GOALS.md only asks for a
@@ -201,6 +274,7 @@ local function checkBuildingSquares(def)
 	local windowsOk = true
 	local doorsOk = true
 	local noCorpses = true
+	local boardedOk = true
 	local roomsSeen = 0
 	local squaresSeen = 0
 
@@ -225,6 +299,9 @@ local function checkBuildingSquares(def)
 							end
 							if squareHasCorpse(square) then
 								noCorpses = false
+							end
+							if not squareOpeningsBoarded(square) then
+								boardedOk = false
 							end
 						end
 					end
@@ -254,6 +331,7 @@ local function checkBuildingSquares(def)
 		windowsOk = windowsOk,
 		doorsOk = doorsOk,
 		noCorpses = noCorpses,
+		boardedOk = boardedOk,
 		roomsSeen = roomsSeen,
 		roomsTotal = roomCount,
 		squaresSeen = squaresSeen,
@@ -264,7 +342,7 @@ local function checkBuildingSquares(def)
 		return "unknown", detail
 	end
 
-	if windowsOk and doorsOk and noCorpses then
+	if windowsOk and doorsOk and noCorpses and boardedOk then
 		return "candidate_restored", detail
 	end
 
@@ -476,6 +554,7 @@ function TwoManCrew.Server.getClaimDetail()
 			row.windowsOk = detail.windowsOk
 			row.doorsOk = detail.doorsOk
 			row.noCorpses = detail.noCorpses
+			row.boardedOk = detail.boardedOk
 			row.crewPresent = detail.crewPresent
 			row.roomsSeen = detail.roomsSeen
 			row.roomsTotal = detail.roomsTotal

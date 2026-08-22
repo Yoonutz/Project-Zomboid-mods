@@ -889,6 +889,7 @@ function TwoManCrewJournalWindow.describeRow(row)
 	if row.windowsOk == false then table.insert(todo, "windows") end
 	if row.doorsOk == false then table.insert(todo, "doors") end
 	if row.noCorpses == false then table.insert(todo, "corpses") end
+	if row.boardedOk == false then table.insert(todo, "boarding") end
 	if row.crewPresent == false then table.insert(todo, "nobody here") end
 
 	if #todo == 0 then
