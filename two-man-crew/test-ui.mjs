@@ -144,8 +144,11 @@ DRAWN = {}
 function ISUIElement:drawRect(x, y, w, h, a, r, g, b)
   table.insert(DRAWN, { kind = "rect", x = x, y = y, w = w, h = h, a = a })
 end
-function ISUIElement:drawText(t, x, y)
-  table.insert(DRAWN, { kind = "text", text = t, x = x, y = y })
+function ISUIElement:drawText(t, x, y, r, g, b, a, font)
+  table.insert(DRAWN, { kind = "text", text = t, x = x, y = y, r = r, g = g, b = b })
+end
+function ISUIElement:drawRectBorder(x, y, w, h, a, r, g, b)
+  table.insert(DRAWN, { kind = "border", x = x, y = y, w = w, h = h, a = a })
 end
 function ISUIElement:drawTextureScaled(tex, x, y, w, h)
   table.insert(DRAWN, { kind = "tex", x = x, y = y, w = w, h = h })
@@ -175,11 +178,98 @@ ISScrollingListBox = ISUIElement:derive("ISScrollingListBox")
 function ISScrollingListBox:new(x, y, w, h)
   local o = ISUIElement.new(self, x, y, w, h)
   o.items = {}
+  o.itemheight = 20
+  o.selected = -1
+  o.drawBorder = false
+  o.scrollHeight = 0
+  o.yScroll = 0
   return o
 end
-function ISScrollingListBox:setFont() end
-function ISScrollingListBox:clear() self.items = {} end
-function ISScrollingListBox:addItem(t, d) table.insert(self.items, { text = t, data = d }) end
+function ISScrollingListBox:setFont(f, pad)
+  self.fontHgt = 16
+  self.itemheight = self.fontHgt + (pad or 0) * 2
+end
+function ISScrollingListBox:clear()
+  self.items = {}
+  self.scrollHeight = 0
+end
+
+-- Mirrors ISScrollingListBox.lua:141-152 - stores the item, sets height, and
+-- RETURNS the row table so a caller can override that height. The old stub
+-- stored a data key and returned nothing, so a card that sets its own row
+-- height would have passed here and broken in the game.
+function ISScrollingListBox:addItem(name, item)
+  local i = { text = name, item = item, height = self.itemheight }
+  table.insert(self.items, i)
+  self.scrollHeight = self.scrollHeight + i.height
+  return i
+end
+
+-- Mirrors ISScrollingListBox.lua:66 - walks per-item heights, which is what
+-- makes a click land on the right card once cards differ in height.
+function ISScrollingListBox:rowAt(x, y)
+  local y0 = 0
+  for i, v in ipairs(self.items) do
+    if not v.height then v.height = self.itemheight end
+    if y >= y0 and y < y0 + v.height then return i end
+    y0 = y0 + v.height
+  end
+  return -1
+end
+
+-- Mirrors ISScrollingListBox.lua:277 and :287.
+function ISScrollingListBox:setOnMouseDownFunction(target, fn)
+  self.target = target
+  self.onmousedown = fn
+end
+function ISScrollingListBox:invokeOnMouseDownFunction()
+  if self.onmousedown and self.items[self.selected] then
+    self.onmousedown(self.target, self.items[self.selected].item)
+  end
+end
+function ISScrollingListBox:onMouseDown(x, y)
+  if #self.items == 0 then return end
+  local row = self:rowAt(x, y)
+  if row > #self.items then row = #self.items end
+  if row < 1 then return end
+  self.selected = row
+  self:invokeOnMouseDownFunction()
+end
+function ISScrollingListBox:doDrawItem(y, item, alt)
+  return y + (item.height or self.itemheight)
+end
+
+-- Mirrors ISTabPanel.lua:484 (addView) and :438 (activateView). The real one
+-- also re-parents the view and hides all but the first; both matter here,
+-- because layout() positions views through the panel.
+ISTabPanel = ISUIElement:derive("ISTabPanel")
+function ISTabPanel:new(x, y, w, h)
+  local o = ISUIElement.new(self, x, y, w, h)
+  o.viewList = {}
+  o.tabHeight = 20
+  o.equalTabWidth = false
+  return o
+end
+function ISTabPanel:setEqualTabWidth(v) self.equalTabWidth = v end
+function ISTabPanel:setCenterTabs(v) self.centerTabs = v end
+function ISTabPanel:addView(name, view)
+  local vo = { name = name, id = #self.viewList + 1, view = view }
+  table.insert(self.viewList, vo)
+  view:setY(self.tabHeight)
+  self:addChild(view)
+  view.parent = self
+  view:setVisible(#self.viewList == 1)
+  if #self.viewList == 1 then self.activeView = vo end
+end
+function ISTabPanel:activateView(name)
+  for _, vo in ipairs(self.viewList) do
+    vo.view:setVisible(vo.name == name)
+    if vo.name == name then self.activeView = vo end
+  end
+end
+function ISTabPanel:getActiveView()
+  return self.activeView and self.activeView.view
+end
 
 ISContextMenu = { get = function() return {
   addOption = function() return {} end, getNew = function() return {} end,
@@ -197,6 +287,7 @@ function getTexture(p) if TEXTURES[p] then return { path = p } end return nil en
 
 function getTextManager()
   return { MeasureStringX = function(_, _, s) return #tostring(s) * 6 end,
+           MeasureStringY = function() return 16 end,
            getFontHeight = function() return 16 end }
 end
 
