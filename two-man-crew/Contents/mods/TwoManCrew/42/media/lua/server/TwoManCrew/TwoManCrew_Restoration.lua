@@ -494,8 +494,13 @@ local function OnClientCommand(module, command, player, args)
 		local restoredCount = TwoManCrew.Server.recheckClaim()
 		local claim = TwoManCrew.Server.getClaim()
 
+		-- announce echoes the caller's flag back untouched. The journal
+		-- window polls this every couple of seconds while it is open, and
+		-- only a survey the player actually asked for should say anything
+		-- on screen.
 		TwoManCrew.replyToPlayer(player, "restorationChecked", {
 			ok = claim ~= nil,
+			announce = args and args.announce or false,
 			restored = restoredCount,
 			total = claim and #claim.buildings or 0,
 		})

@@ -64,12 +64,21 @@ local function onServerCommand(module, command, args)
 		local player = getPlayer()
 		if not player then return end
 
+		-- Silent unless the player asked. The journal window re-surveys on a
+		-- timer while it is open, and every one of those replies used to
+		-- raise a halo line, so an open window meant a permanent
+		-- "Restored: 0 of 5" scrolling over the character.
 		if not args.ok then
-			HaloTextHelper.addBadText(player, "No claim to check yet.")
+			if args.announce then
+				HaloTextHelper.addBadText(player, "No claim to check yet.")
+			end
 			return
 		end
 
-		HaloTextHelper.addText(player, "Restored: " .. tostring(args.restored) .. " of " .. tostring(args.total))
+		if args.announce then
+			HaloTextHelper.addText(player,
+				"Restored: " .. tostring(args.restored) .. " of " .. tostring(args.total))
+		end
 
 		if TwoManCrew.Client.requestTierProgress then
 			TwoManCrew.Client.requestTierProgress(player)

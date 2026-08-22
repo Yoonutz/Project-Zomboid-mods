@@ -251,10 +251,20 @@ function TwoManCrewJournalWindow:createChildren()
 	-- Nothing here is clickable. The briefing is read, not operated: it used to
 	-- be cards you clicked open, and needing a click to find out what to do is
 	-- the opposite of the point.
+	--
+	-- The row renderer is handed the LIST as its drawing surface, not this
+	-- window. The y it receives counts from the top of the list's own content
+	-- (ISScrollingListBox.lua:507), and every draw call resolves against the
+	-- element it is called on. Painting those coordinates onto the window put
+	-- the whole briefing about a tab-strip's height too high and a pad too far
+	-- left, and the list's stencil (ISScrollingListBox.lua:504) then clipped
+	-- away everything that had been pushed above its top edge - which is why
+	-- the first rows were missing and the section headings ran under the
+	-- window frame.
 	local window = self
 	self.list.doDrawItem = function(listSelf, y, item, alt)
 		if item and item.item and item.item.kind then
-			return window.drawBriefingRow(window, y, item, alt)
+			return window.drawBriefingRow(window, listSelf, y, item, alt)
 		end
 		return ISScrollingListBox.doDrawItem(listSelf, y, item, alt)
 	end
@@ -459,10 +469,18 @@ end
 -- The open window polls this, so the announced version below would put
 -- "Checking the claim..." over the screen every two seconds. Announce a survey
 -- the player asked for; stay quiet about the ones the panel runs for itself.
-function TwoManCrewJournalWindow:requestSurvey()
+--
+-- The quiet flag rides the request and comes back on the reply. Keeping it
+-- client-side only did not work: the reply handler had no way to tell a poll
+-- apart from a press, so it announced every one of them and the crew got
+-- "Restored: 0 of 5" over their head every two seconds for as long as the
+-- window stayed open.
+function TwoManCrewJournalWindow:requestSurvey(announce)
 	local player = getPlayer()
 	if not player then return end
-	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {})
+	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {
+		announce = announce and true or false,
+	})
 end
 
 -- The announced survey, for an explicit press.
@@ -470,8 +488,7 @@ function TwoManCrewJournalWindow:onCheckRestoration()
 	local player = getPlayer()
 	if not player then return end
 
-	self:requestSurvey()
-	HaloTextHelper.addText(player, "Checking the claim...")
+	self:requestSurvey(true)
 end
 
 -- Asks the server to survey and assign a block. The server decides which one
@@ -726,7 +743,12 @@ local ROW_COLOUR = {
 
 -- Draws one briefing row. Returns the next row's y, which is the contract the
 -- list uses to set item.height (ISScrollingListBox.lua:533).
-function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
+--
+-- `surface` is the list, and every drawing call must go through it: y arrives
+-- in the list's own content space, so drawing anywhere else lands in the wrong
+-- place and is then clipped by the list's stencil. `self` stays the window,
+-- which is what owns the font, the scale and the text trimmer.
+function TwoManCrewJournalWindow:drawBriefingRow(surface, y, item, alt)
 	local row = item and item.item
 	local font = self:font()
 	local lineH = getTextManager():getFontHeight(font)
@@ -745,7 +767,13 @@ function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
 		return y + height
 	end
 
-	local w = (self.list and self.list:getWidth() or self.width) - SCROLLBAR_W
+	-- Width comes from the surface actually being painted, and the scrollbar
+	-- only steals room when it is on screen. Subtracting it unconditionally
+	-- narrowed every row by 14px even with nothing to scroll.
+	local w = surface:getWidth()
+	if surface.isVScrollBarVisible and surface:isVScrollBarVisible() then
+		w = w - SCROLLBAR_W
+	end
 	local x = CARD_PAD + math.floor((INDENT[row.kind] or 0) * scale)
 	local c = ROW_COLOUR[row.kind] or SKIN.text
 
@@ -753,15 +781,15 @@ function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
 		-- A category gets a little air above it and a rule beneath, so the three
 		-- sections separate without any box drawing.
 		height = lineH + math.floor(7 * scale)
-		self:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
-		self:drawRect(x, y + lineH + math.floor(2 * scale), w - x - CARD_PAD, 1,
+		surface:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
+		surface:drawRect(x, y + lineH + math.floor(2 * scale), w - x - CARD_PAD, 1,
 			1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
 
 	elseif row.kind == ROW_BAR then
 		-- Label on the left, ladder filling the rest. One cell per building or
 		-- stage, because these counts are small enough to count.
 		local labelW = getTextManager():MeasureStringX(font, row.text)
-		self:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
+		surface:drawText(row.text, x, y, c.r, c.g, c.b, 1, font)
 
 		local tone = row.tone or {}
 		local target = tone.target or 0
@@ -777,8 +805,8 @@ function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
 			for i = 1, target do
 				local cx = barX + (i - 1) * (cellW + gap)
 				local cc = (i <= done) and SKIN.done or SKIN.ground
-				self:drawRect(cx, barY, cellW, barH, 1, cc.r, cc.g, cc.b)
-				self:drawRectBorder(cx, barY, cellW, barH, 1,
+				surface:drawRect(cx, barY, cellW, barH, 1, cc.r, cc.g, cc.b)
+				surface:drawRectBorder(cx, barY, cellW, barH, 1,
 					SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
 			end
 		end
@@ -786,7 +814,7 @@ function TwoManCrewJournalWindow:drawBriefingRow(y, item, alt)
 	else
 		local prefix = ""
 		if row.kind == ROW_TASK then prefix = "> " end
-		self:drawText(
+		surface:drawText(
 			TwoManCrewJournalWindow.fit(prefix .. row.text, w - x - CARD_PAD, font),
 			x, y, c.r, c.g, c.b, 1, font)
 	end
@@ -1026,7 +1054,11 @@ function TwoManCrewJournalWindow:prerender()
 		if TwoManCrew.Client and TwoManCrew.Client.requestTierProgress then
 			TwoManCrew.Client.requestTierProgress(getPlayer())
 		end
-		self:requestSurvey()
+		-- No re-survey here. requestClaimDetail above already walks every
+		-- unbanked building and banks what it finds, so asking for a rescan
+		-- as well walked the whole claim twice every two seconds. In
+		-- singleplayer that walk runs on the main thread, which is exactly
+		-- the hitch the Refresh button's comment says must not go on a timer.
 	end
 
 	-- Repopulate only when the underlying report changed (or the view was
