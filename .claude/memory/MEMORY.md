@@ -18,6 +18,7 @@ acting on its topic.
 - [pz-mod-icons-are-generated](pz-mod-icons-are-generated.md) — TwoManCrew UI icons come from `make-icons.py` character grids; edit the grid and re-run, and ASCII-render to check the shape reads
 - [pz-ui-size-must-go-through-setters](pz-ui-size-must-go-through-setters.md) — PZ hit-tests against the Java object; raw `self.width` resizes the drawing but not the hitbox
 - [pz-verification-is-ingame-only](pz-verification-is-ingame-only.md) — the fengari UI harness was deleted by decision; `npm run check` never executes a line, so a UI claim is proved in-game or reported Unverified
+- [pz-journal-campaign-is-task-cards](pz-journal-campaign-is-task-cards.md) — the Campaign view is tabbed task cards built from data the client already had; the done/failed/unreadable three-mark rule must never become a boolean
 - [no-verification-scaffolding](no-verification-scaffolding.md) — never write a test or probe ad-hoc; `superpowers:test-driven-development` must be invoked first, otherwise verify by diffing origin/master
 - [pz-runs-lua-5-1-kahlua](pz-runs-lua-5-1-kahlua.md) — PZ is Lua 5.1 (Kahlua): use the 5.1 manual, `require` takes slash paths, `unpack` not `table.unpack`, no `goto`/`pcall`/`io`
 - [pz-instrument-before-fixing-runtime-faults](pz-instrument-before-fixing-runtime-faults.md) — in-game faults get logging + a real game run BEFORE a fix; three builds reasoned from source were all wrong

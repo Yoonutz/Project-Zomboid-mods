@@ -10,16 +10,22 @@
 
 ---
 
-> **STATUS: partly written, NOT TESTED. Branch `feature/campaign-task-cards`, 2026-08-22, version `0.3.1` at start.**
+> **STATUS: all tasks written, NOT TESTED. Branch `feature/campaign-task-cards`, 2026-08-22, version `0.4.0`.**
 >
 > **This code has never been executed.** No Project Zomboid session has loaded
-> it. Nothing below is known to work.
+> it. Nothing here is known to work.
 >
-> What actually ran: `npm run check` (luaparse), which parses every Lua file and
-> **never executes a line**. It is proofreading. It cannot catch a wrong method
-> name, a nil at runtime, a wrong event, or a UI that draws garbage.
+> What actually ran: `npm run check` (luaparse, 29/29 parsed) and `prettier`
+> over this repo's own markdown. Neither executes a line of the mod. They are
+> proofreading: they cannot catch a wrong method name, a nil at runtime, a wrong
+> event, or a UI that draws garbage.
 >
-> Every in-game check is OPEN.
+> `lua-language-server` did NOT run - it is not on PATH in this environment.
+> That gate is unchecked, not passed.
+>
+> Every in-game check is OPEN. Specifically unverified: whether the tabs appear
+> and switch, whether a click opens a card, whether the ladder and the skin draw
+> correctly, and whether the Livestock tab has contents.
 
 ## Change of approach, 2026-08-22
 
@@ -97,13 +103,13 @@ No server file changes. Every field the cards read is already sent.
 
 ---
 
-### Task 5: Click to expand
+### Task 5: Click to expand - DONE
 
 **Files:**
 
 - Modify: `.../client/TwoManCrew/TwoManCrew_JournalWindow.lua`
 
-- [ ] **Step 1: Add the handler**
+- [x] **Step 1: Add the handler**
 
 Place it directly above `populateCampaign`.
 
@@ -123,7 +129,7 @@ function TwoManCrewJournalWindow:onCardClicked(card)
 end
 ```
 
-- [ ] **Step 2: Run the parser**
+- [x] **Step 2: Run the parser**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
@@ -131,7 +137,7 @@ cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
 
 Expected: `29/29 parsed`.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add "two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua"
@@ -140,13 +146,13 @@ git commit -m "feat: open a task card into its checklist on click"
 
 ---
 
-### Task 6: Rewrite `populateCampaign` to emit cards
+### Task 6: Rewrite `populateCampaign` to emit cards - DONE
 
 **Files:**
 
 - Modify: `.../client/TwoManCrew/TwoManCrew_JournalWindow.lua`
 
-- [ ] **Step 1: Replace the whole existing function**
+- [x] **Step 1: Replace the whole existing function**
 
 The tier list, the census block and both `Next:` lines all go. Their content
 still reaches the player, as cards rather than as undifferentiated rows.
@@ -192,7 +198,7 @@ function TwoManCrewJournalWindow:populateCampaign()
 end
 ```
 
-- [ ] **Step 2: Wire the list to the renderer and the click handler**
+- [x] **Step 2: Wire the list to the renderer and the click handler**
 
 In `createChildren`, immediately after `self.list.drawBorder = true`:
 
@@ -218,7 +224,7 @@ In `createChildren`, immediately after `self.list.drawBorder = true`:
 	end)
 ```
 
-- [ ] **Step 3: Drop the stale card set when fresh data arrives**
+- [x] **Step 3: Drop the stale card set when fresh data arrives**
 
 In `onRefresh`, beside the existing `self.lastSeenTierProgress = nil`:
 
@@ -226,7 +232,7 @@ In `onRefresh`, beside the existing `self.lastSeenTierProgress = nil`:
 	self.cards = nil
 ```
 
-- [ ] **Step 4: Run the parser**
+- [x] **Step 4: Run the parser**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
@@ -234,7 +240,7 @@ cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
 
 Expected: `29/29 parsed`.
 
-- [ ] **Step 5: Read the diff**
+- [x] **Step 5: Read the diff**
 
 With no suite, the diff is the evidence. Confirm by eye that `populateCampaign`
 no longer emits tier or census rows, that `drawCard` is reached only for rows
@@ -244,7 +250,7 @@ whose item has `checks`, and that `self.cards` is cleared in `onRefresh`.
 git diff -- "two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua"
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add "two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua"
@@ -253,13 +259,13 @@ git commit -m "feat: render the campaign view as task cards"
 
 ---
 
-### Task 7: Tabs replace the cycling View button
+### Task 7: Tabs replace the cycling View button - DONE
 
 **Files:**
 
 - Modify: `.../client/TwoManCrew/TwoManCrew_JournalWindow.lua`
 
-- [ ] **Step 1: Create the three extra lists**
+- [x] **Step 1: Create the three extra lists**
 
 In `createChildren`, before the tab panel. Each is built exactly like
 `self.list`; `addView` re-parents them, so none is added to the window directly.
@@ -280,7 +286,7 @@ In `createChildren`, before the tab panel. Each is built exactly like
 	self.journalList = makeList()
 ```
 
-- [ ] **Step 2: Build the tab panel**
+- [x] **Step 2: Build the tab panel**
 
 ```lua
 	-- Four named views instead of one button cycling through three states. The
@@ -299,7 +305,7 @@ In `createChildren`, before the tab panel. Each is built exactly like
 	self.tabs:addView("Journal", self.journalList)
 ```
 
-- [ ] **Step 3: Delete the View button and the toggle machinery**
+- [x] **Step 3: Delete the View button and the toggle machinery**
 
 Remove the `self.viewButton = self:makeIconButton(...)` block, and remove
 `VIEW_ORDER`, `VIEW_LABEL`, `nextView`, `onToggleView`, and every reference to
@@ -307,7 +313,7 @@ Remove the `self.viewButton = self:makeIconButton(...)` block, and remove
 
 Keep `onCheckRestoration`: it is still the rescan entry point.
 
-- [ ] **Step 4: Point each populate function at its own list**
+- [x] **Step 4: Point each populate function at its own list**
 
 `populateJournal` writes to `self.journalList`; `populateBuildings` writes to
 `self.buildingsList`. Replace the dispatcher:
@@ -322,7 +328,7 @@ function TwoManCrewJournalWindow:populate()
 end
 ```
 
-- [ ] **Step 5: Update `layout()`**
+- [x] **Step 5: Update `layout()`**
 
 Two buttons now, and the tab panel takes the space the list used to have:
 
@@ -349,7 +355,7 @@ After the list geometry is computed, size the panel and its views:
 	end
 ```
 
-- [ ] **Step 6: Run the parser and read the diff**
+- [x] **Step 6: Run the parser and read the diff**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
@@ -364,7 +370,7 @@ grep -n "viewButton\|activeView" "Contents/mods/TwoManCrew/42/media/lua/client/T
 
 Expected: no output.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add "two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua"
@@ -373,13 +379,13 @@ git commit -m "feat: replace the cycling view button with four named tabs"
 
 ---
 
-### Task 8: Skin the window chrome
+### Task 8: Skin the window chrome - DONE
 
 **Files:**
 
 - Modify: `.../client/TwoManCrew/TwoManCrew_JournalWindow.lua`
 
-- [ ] **Step 1: Set the base colours**
+- [x] **Step 1: Set the base colours**
 
 At the top of `createChildren`, right after `ISCollapsableWindow.createChildren(self)`:
 
@@ -391,7 +397,7 @@ At the top of `createChildren`, right after `ISCollapsableWindow.createChildren(
 	self.borderColor = { r = SKIN.ruleLit.r, g = SKIN.ruleLit.g, b = SKIN.ruleLit.b, a = 1 }
 ```
 
-- [ ] **Step 2: Add the amber rule under the title**
+- [x] **Step 2: Add the amber rule under the title**
 
 In `prerender`, after the header text is drawn:
 
@@ -404,13 +410,13 @@ In `prerender`, after the header text is drawn:
 	self:drawRect(0, ruleY + 1, self.width, 1, 1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
 ```
 
-- [ ] **Step 3: Recolour the header text**
+- [x] **Step 3: Recolour the header text**
 
 In `prerender`, replace the literal colour triplets in the three `drawText` calls:
 the claim line takes `SKIN.active`, the refusal line `SKIN.blocked`, the no-claim
 hint `SKIN.dim`. Alpha stays LAST - that is `drawText`'s signature.
 
-- [ ] **Step 4: Run the parser**
+- [x] **Step 4: Run the parser**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
@@ -418,7 +424,7 @@ cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
 
 Expected: `29/29 parsed`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "two-man-crew/Contents/mods/TwoManCrew/42/media/lua/client/TwoManCrew/TwoManCrew_JournalWindow.lua"
@@ -427,7 +433,7 @@ git commit -m "feat: skin the journal window as a work order"
 
 ---
 
-### Task 9: Version bump and close out
+### Task 9: Version bump and close out - DONE
 
 **Controller only.**
 
@@ -436,7 +442,7 @@ git commit -m "feat: skin the journal window as a work order"
 - Modify: `two-man-crew/Contents/mods/TwoManCrew/mod.info`
 - Modify: `two-man-crew/Contents/mods/TwoManCrew/42/mod.info`
 
-- [ ] **Step 1: Bump both copies to 0.4.0**
+- [x] **Step 1: Bump both copies to 0.4.0**
 
 New behaviour, so minor rather than patch. Both files must match; they have
 drifted once already.
@@ -449,14 +455,14 @@ grep -H modversion mod.info 42/mod.info
 
 Expected: both print `modversion=0.4.0`.
 
-- [ ] **Step 2: Run every gate**
+- [x] **Step 2: Run every gate**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew" && npm run check
 cd "d:/Dropbox/Apps/Project Zomboid" && npx prettier --check "*.md" "docs/**/*.md" ".claude/memory/*.md"
 ```
 
-- [ ] **Step 3: Run the language server, from the repo root**
+- [x] **Step 3: Run the language server, from the repo root**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid" && lua-language-server --check=. --checklevel=Warning
@@ -465,18 +471,18 @@ cd "d:/Dropbox/Apps/Project Zomboid" && lua-language-server --check=. --checklev
 Expected: no new diagnostics. Never "fix" the pre-existing atan2 or
 duplicate-set-field warnings.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add two-man-crew/Contents/mods/TwoManCrew/mod.info two-man-crew/Contents/mods/TwoManCrew/42/mod.info
 git commit -m "chore: bump modversion to 0.4.0 for the campaign task cards"
 ```
 
-- [ ] **Step 5: Update this plan's status banner**
+- [x] **Step 5: Update this plan's status banner**
 
 Record what actually ran. Name the gates; do not imply the mod works.
 
-- [ ] **Step 6: Report honestly**
+- [x] **Step 6: Report honestly**
 
 The closing report says `Unverified: not loaded in Project Zomboid`. Do not claim
 the panel works, looks right, or that the click targets land. None of that has
