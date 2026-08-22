@@ -36,6 +36,19 @@
 -- but is NOT used here: it needs a loaded square, defeating the whole fix.
 
 require "TwoManCrew/TwoManCrew_Config"
+require "TwoManCrew/TwoManCrew_CrewState"
+
+-- Server-authority guard, matching every other file in this folder. Without
+-- it this file also loaded on a multiplayer CLIENT, where TwoManCrew_CrewState
+-- HAS bailed out, so TwoManCrew.Server.getState() does not exist - assignClaim
+-- then called a nil value on the first "Claim a block" press. The survey is the
+-- host's job in multiplayer; the client only sends requestClaim and waits.
+--
+-- isClient() is false in singleplayer, so this file still runs there and the
+-- claim works offline. Vanilla uses exactly this guard for systems that must
+-- work in both (server/ClientCommands.lua:1, server/Farming/SFarmingSystem.lua:1,
+-- server/Map/SGlobalObjectSystem.lua:1 - 33 core server files in total).
+if isClient() then return end
 
 TwoManCrew.Server = TwoManCrew.Server or {}
 

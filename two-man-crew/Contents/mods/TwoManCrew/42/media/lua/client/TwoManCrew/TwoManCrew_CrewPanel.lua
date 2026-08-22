@@ -53,6 +53,13 @@ function TwoManCrewPanel:new(x, y, width, height)
 	---@type { text: string, playerName: string, worldAgeHours: number }|nil
 	o.lastJournal = nil
 
+	-- Crew badge drawn on the header row, left of the "CREW" label. Loaded
+	-- once here rather than per frame, and nil-safe: getTexture returns nil
+	-- for a missing file and prerender skips the draw, so a packaging mistake
+	-- costs the badge and not the widget. Same art and same media/ui path as
+	-- the journal title bar, so the two surfaces read as one mod.
+	o.badge = getTexture("media/ui/TwoManCrew_Journal_16.png")
+
 	TwoManCrewPanel.instance = o
 	return o
 end
@@ -118,7 +125,20 @@ function TwoManCrewPanel:prerender()
 
 	local y = pad
 
-	self:drawText("CREW", pad, y, 0.85, 0.85, 0.85, 1, UIFont.Small)
+	-- Badge sits on the header row and scales with the panel, so the widget
+	-- stays one piece at every size. The label shifts right by the badge width
+	-- only when the badge actually drew; a missing texture leaves the original
+	-- flush-left layout rather than an empty gap.
+	-- drawTextureScaled(texture, x, y, w, h, a, r, g, b) - alpha FIRST,
+	-- verified at client/ISUI/ISUIElement.lua:1032.
+	local labelX = pad
+	if self.badge then
+		local badgeSize = line - 2
+		self:drawTextureScaled(self.badge, pad, y, badgeSize, badgeSize, 1, 1, 1, 1)
+		labelX = pad + badgeSize + math.floor(4 * scale)
+	end
+
+	self:drawText("CREW", labelX, y, 0.85, 0.85, 0.85, 1, UIFont.Small)
 	y = y + line
 
 	-- Danger is not decided here: WatchMyBack owns that end-to-end via the

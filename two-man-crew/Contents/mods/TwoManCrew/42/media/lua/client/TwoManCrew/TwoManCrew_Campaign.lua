@@ -27,6 +27,13 @@ function TwoManCrew.Client.requestClaim(player)
 	if not player then return end
 
 	sendClientCommand(player, TwoManCrew.MODULE, "requestClaim", {})
+
+	-- Acknowledge the press immediately. The survey is a server round trip, so
+	-- without this the button looks dead whenever the reply is slow or never
+	-- arrives - which is exactly how a host running an older build, or no
+	-- build at all, presents itself. Silence is the one outcome that tells the
+	-- crew nothing; onServerCommand replaces this with the real verdict.
+	HaloTextHelper.addText(player, "Surveying the block...")
 end
 
 local function onServerCommand(module, command, args)
