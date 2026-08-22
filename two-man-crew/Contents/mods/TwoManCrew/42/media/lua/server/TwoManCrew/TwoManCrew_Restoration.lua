@@ -45,6 +45,11 @@
 require "TwoManCrew/TwoManCrew_Config"
 require "TwoManCrew/TwoManCrew_CrewState"
 
+-- PZ loads server/ on multiplayer clients too. Without this the file runs there,
+-- where the guarded server files have bailed out. isClient() is false in
+-- singleplayer, so this does not disable anything offline.
+if isClient() then return end
+
 TwoManCrew.Server = TwoManCrew.Server or {}
 
 -- How close a player must be to a building's centre for its squares to be

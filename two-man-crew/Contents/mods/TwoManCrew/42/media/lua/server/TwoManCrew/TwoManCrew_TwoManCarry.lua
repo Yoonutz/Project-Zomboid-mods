@@ -17,6 +17,11 @@
 
 require "TwoManCrew/TwoManCrew_Config"
 
+-- PZ loads server/ on multiplayer clients too. Without this the file runs there,
+-- where the guarded server files have bailed out. isClient() is false in
+-- singleplayer, so this does not disable anything offline.
+if isClient() then return end
+
 local COOLDOWN_KEY = "TwoManCarry"
 local HEAVY_LOAD_THRESHOLD = 2 -- matches the vanilla ISFitnessUI.lua:219 gate
 

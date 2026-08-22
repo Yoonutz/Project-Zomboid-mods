@@ -15,6 +15,11 @@
 
 require "TwoManCrew/TwoManCrew_Config"
 
+-- PZ loads server/ on multiplayer clients too. Without this the file runs there,
+-- where the guarded server files have bailed out. isClient() is false in
+-- singleplayer, so this does not disable anything offline.
+if isClient() then return end
+
 local TRACKED_PERKS = {
 	Perks.Woodwork,
 	Perks.Axe,
