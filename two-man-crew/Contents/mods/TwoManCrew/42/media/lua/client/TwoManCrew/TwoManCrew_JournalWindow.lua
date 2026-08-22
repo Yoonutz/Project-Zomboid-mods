@@ -1058,7 +1058,12 @@ function TwoManCrewJournalWindow:prerender()
 		-- the halo text that fades: a player who presses claim and sees only
 		-- a vanishing message reads the button as broken, which is what was
 		-- reported. Amber, because it is an answer and not an error.
-		self:drawText("No claim: " .. refusal, PAD, y, SKIN.blocked.r, SKIN.blocked.g, SKIN.blocked.b, 1, UIFont.Small)
+		-- Trimmed to the panel: the refusal now carries counts, so it is long
+		-- enough to paint over the tab row if drawn raw. The untrimmed text
+		-- goes to chat and to the console log, which is where the full
+		-- numbers are meant to be read anyway.
+		local line = TwoManCrewJournalWindow.fit("No claim: " .. refusal, self.width - PAD * 2, UIFont.Small)
+		self:drawText(line, PAD, y, SKIN.blocked.r, SKIN.blocked.g, SKIN.blocked.b, 1, UIFont.Small)
 	else
 		-- The button says "Claim" now, not "Claim a block", so the hint names
 		-- the icon by its tooltip word rather than a label that no longer exists.

@@ -150,9 +150,21 @@ end
 -- No z parameter: metaGrid:getAssociatedBuildingAt(x, y) takes x/y only
 -- (DebugChunkState_SquarePanel.lua:120) - a building footprint on the map is
 -- ground-plane, not per-floor.
+--
+-- Also returns a stats table describing what the walk saw and what it threw
+-- away. A refusal that only says "not enough standing buildings" is
+-- indistinguishable from a survey that found nothing at all, from a survey
+-- that found ten houses and rejected every one as too big, and from a
+-- MetaGrid that answered nil everywhere. Those need different fixes, so the
+-- counts travel back with the verdict instead of being lost here.
 local function surveyBuildings(centreX, centreY)
+	local stats = { seen = 0, tooBig = 0, noRooms = 0, kept = 0, keptUnits = 0, biggest = 0 }
+
 	local metaGrid = getWorld():getMetaGrid()
-	if not metaGrid then return {} end
+	if not metaGrid then
+		stats.noMetaGrid = true
+		return {}, stats
+	end
 
 	local found = {}
 	local order = {}
@@ -164,7 +176,18 @@ local function surveyBuildings(centreX, centreY)
 				local id = def:getIDString()
 				if id and not found[id] then
 					local units = scoreBuilding(def)
+
+					stats.seen = stats.seen + 1
+					if units > stats.biggest then stats.biggest = units end
+					if units <= 0 then
+						stats.noRooms = stats.noRooms + 1
+					elseif units > MAX_UNITS_PER_BUILDING then
+						stats.tooBig = stats.tooBig + 1
+					end
+
 					if units > 0 and units <= MAX_UNITS_PER_BUILDING then
+						stats.kept = stats.kept + 1
+						stats.keptUnits = stats.keptUnits + units
 						local bx1, by1, bx2, by2 = buildingBounds(def)
 						found[id] = {
 							id = id,
@@ -187,7 +210,7 @@ local function surveyBuildings(centreX, centreY)
 		end
 	end
 
-	return order
+	return order, stats
 end
 
 -- Picks a subset whose total work lands inside the band. Buildings are taken in
@@ -234,14 +257,42 @@ function TwoManCrew.Server.assignClaim(player)
 		return TwoManCrew.Server.getClaim(), "already assigned"
 	end
 
-	local candidates = surveyBuildings(player:getX(), player:getY())
-	if #candidates == 0 then
+	local candidates, stats = surveyBuildings(player:getX(), player:getY())
+
+	-- One line per survey, in the console log, whatever the verdict. The
+	-- refusal text below is deliberately short; this is the full picture.
+	print(string.format(
+		"TwoManCrew: survey at %d,%d - buildings seen %d, kept %d (%d units), too big %d, no rooms %d, biggest %d, need %d",
+		math.floor(player:getX()), math.floor(player:getY()),
+		stats.seen, stats.kept, stats.keptUnits, stats.tooBig, stats.noRooms, stats.biggest,
+		TARGET_MIN_UNITS
+	))
+
+	if stats.noMetaGrid then
+		return nil, "the map metadata is not readable here - try again once the area has loaded"
+	end
+
+	if stats.seen == 0 then
 		return nil, "no buildings in range - move into a town and try again"
+	end
+
+	-- Every building was found and every one was thrown away. Saying "not
+	-- enough standing buildings" here is simply wrong: there are buildings,
+	-- they are the wrong SIZE for the band, and the crew needs to hear that
+	-- so they walk to smaller houses rather than to a bigger town.
+	if #candidates == 0 then
+		return nil, string.format(
+			"%d buildings here, all too big for one campaign (biggest %d work units, limit %d) - try a street of smaller houses",
+			stats.seen, stats.biggest, MAX_UNITS_PER_BUILDING
+		)
 	end
 
 	local buildings, total = chooseClaim(candidates)
 	if total < TARGET_MIN_UNITS then
-		return nil, "not enough standing buildings here for a campaign"
+		return nil, string.format(
+			"not enough here for a campaign - %d usable buildings, %d work units of the %d needed (%d rejected as too big)",
+			stats.kept, stats.keptUnits, TARGET_MIN_UNITS, stats.tooBig
+		)
 	end
 
 	local state = TwoManCrew.Server.getState()
