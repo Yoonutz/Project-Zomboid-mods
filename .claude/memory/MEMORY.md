@@ -17,8 +17,9 @@ acting on its topic.
 - [server-files-need-isclient-guard](server-files-need-isclient-guard.md) — every `server/` file needs `if isClient() then return end`; PZ loads that folder on MP clients too, and the failure is invisible in singleplayer
 - [pz-mod-icons-are-generated](pz-mod-icons-are-generated.md) — TwoManCrew UI icons come from `make-icons.py` character grids; edit the grid and re-run, and ASCII-render to check the shape reads
 - [pz-ui-size-must-go-through-setters](pz-ui-size-must-go-through-setters.md) — PZ hit-tests against the Java object; raw `self.width` resizes the drawing but not the hitbox
-- [pz-run-the-ui-not-just-the-parser](pz-run-the-ui-not-just-the-parser.md) — `npm test` runs the UI under a real Lua VM; luaparse and the language server pass on completely broken UI
+- [pz-verification-is-ingame-only](pz-verification-is-ingame-only.md) — the fengari UI harness was deleted by decision; `npm run check` never executes a line, so a UI claim is proved in-game or reported Unverified
 - [no-verification-scaffolding](no-verification-scaffolding.md) — never write a test or probe ad-hoc; `superpowers:test-driven-development` must be invoked first, otherwise verify by diffing origin/master
 - [pz-runs-lua-5-1-kahlua](pz-runs-lua-5-1-kahlua.md) — PZ is Lua 5.1 (Kahlua): use the 5.1 manual, `require` takes slash paths, `unpack` not `table.unpack`, no `goto`/`pcall`/`io`
 - [pz-instrument-before-fixing-runtime-faults](pz-instrument-before-fixing-runtime-faults.md) — in-game faults get logging + a real game run BEFORE a fix; three builds reasoned from source were all wrong
 - [pz-sendservercommand-is-mp-only](pz-sendservercommand-is-mp-only.md) — `sendServerCommand` reaches nobody in singleplayer; request/reply must use the mod's local-dispatch helpers
+- [superpowers-artifacts-committed-vs-local](superpowers-artifacts-committed-vs-local.md) — plans in `docs/superpowers/plans/` are committed and carry an execution-status banner; `.superpowers/` brainstorm scratch is gitignored on purpose

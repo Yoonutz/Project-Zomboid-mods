@@ -36,7 +36,7 @@ three in a row destroys trust far more than saying "I need one run to find out".
 - **Check the log's timestamp against the install's.** A log written before the deploy says
   nothing about the new build; twice this session an old log nearly produced a false conclusion.
 - Asking the user for one two-minute run is cheaper than one wrong build. Ask early.
-- A green `npm test` is not evidence about the game - the stub is not PZ. See
+- There is no local suite at all now, so the log is the only evidence. See
   [[pz-run-the-ui-not-just-the-parser]].
 
 Related: [[pz-run-the-ui-not-just-the-parser]], [[pz-ui-size-must-go-through-setters]],

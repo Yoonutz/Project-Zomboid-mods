@@ -31,8 +31,10 @@ them meet a constraint here that changes how they run.
   probe, benchmark, or instrumented copy of a source file. No skill invocation
   means no test: make the fix and verify by diff instead. Tests improvised
   after the fact cannot fail, so they prove nothing. Running the checks this
-  repo already has (`npm run check`, `npm test` in `two-man-crew/`) is not
-  authoring a test; adding cases to `test-ui.mjs` is.
+  repo already has (`npm run check` in `two-man-crew/`) is not authoring a
+  test. There is no local test suite to add cases to: see the deleted-harness
+  note in `lua-and-checks.md`. A behaviour claim is proved in-game or not at
+  all.
 - `superpowers:executing-plans` — running a committed plan in a fresh session,
   task-by-task with checkpoints. Preferred when the plan's tasks are sequential
   or share files.
@@ -75,8 +77,8 @@ them meet a constraint here that changes how they run.
   source before agreeing or dismissing; see
   `.claude/memory/pz-vanilla-source-is-the-api-reference.md`.
 - `superpowers:finishing-a-development-branch` — deciding merge vs PR vs
-  cleanup once the checks pass. "Checks pass" here means `npm run check` and
-  `npm test`, which do **not** mean the mod works in-game.
+  cleanup once the checks pass. "Checks pass" here means `npm run check`,
+  which does **not** mean the mod works in-game.
 
 Nothing in this repo can be verified by running the game, so anything needing a
 live load is reported unverified rather than propped up with scaffolding built
@@ -106,8 +108,8 @@ says so in those words rather than implying otherwise.
 > Every in-game check is OPEN.
 ```
 
-The trap this exists to stop: `npm run check`, `npm test`, `lua-language-server`
-and `prettier` all passing reads as "implemented". It is not. A banner once said
+The trap this exists to stop: `npm run check`, `lua-language-server` and
+`prettier` all passing reads as "implemented". It is not. A banner once said
 "implemented" and listed those passing gates, which is why the wording is fixed
 here. Name the checks that ran, then say what they cannot prove.
 

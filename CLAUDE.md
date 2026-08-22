@@ -1,97 +1,65 @@
-# pz-b42-mods — project conventions
+# pz-b42-mods
 
-- Target Build 42 by default. Only add a `41/` folder for a mod if B41 support
-  is explicitly needed — B41 and B42 item/recipe script syntax are not
-  compatible (`Type=` vs `ItemType=`, old `recipe{}` vs `craftRecipe{}`).
-- Before using any Lua function, event, or item/script property not already
-  cited in `docs/`, verify it against `docs/pz-modding-guide/`,
-  `docs/lua-api-wiki.md`, `docs/lua-events-reference.md`, or
-  <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> (the real
-  current API reference — the PZwiki `LuaDocs` page itself is stale, see
-  `docs/luadocs-wiki-note.md`). Add newly-verified facts to `docs/` as they're
-  confirmed rather than re-deriving them each time.
-  The game runs **Lua 5.1** (Kahlua), so base-language questions go to the 5.1
-  manual, never the current one — `docs/lua-language-reference.md` has the link
-  and lists the 5.2+ features (`goto`, `table.unpack`, `//`, bitwise ops) that
-  do not exist here.
-  `docs/api-documentation-sources.md` ranks every external doc source — which
-  is current, which is archived, and the browser User-Agent needed to fetch
-  `pzwiki.net` and `projectzomboid.com` (both 403 the default fetch agent).
-- New mods: copy `_template/`, don't hand-build the folder tree — it already
-  matches the Steam Workshop packaging layout (`workshop.txt` +
-  `Contents/mods/<ModID>/{common,41,42}/`).
-- No in-game testing happens automatically in this environment. Any change to
-  a `.txt` script or `.lua` file is a syntax-level claim only until it's been
-  loaded in PZ and checked against `~/Zomboid/Logs/` for parse errors.
-  The CURRENT session's log sits at the `~/Zomboid/Logs/` root, not in the
-  dated `logs_<date>/` subfolder (those hold only earlier sessions), so read
-  it with `ls -t ~/Zomboid/Logs/*.txt | head` and tail that file directly.
-- Any change to a mod's behaviour bumps `modversion` in that mod's `mod.info`
-  in the SAME commit - patch for fixes, minor for new behaviour or assets.
-  TwoManCrew has two `mod.info` files (`Contents/mods/TwoManCrew/mod.info` and
-  `.../42/mod.info`); they must stay identical, and have drifted once already.
-  Leave `pzversion`/`versionMin` (game build) and `workshop.txt`'s `version=1`
-  (Workshop format) alone - neither tracks the mod's own iteration.
+A Project Zomboid Build 42 modding workspace. Several mods, one per top-level
+folder, sharing a docs tree and a mod template. `two-man-crew/` is the active one
+and carries all the build tooling; the rest are smaller and mostly stable.
 
-- Editor diagnostics come from `.luarc.json` + `types/pz.lua` (a `---@meta`
-  stub for the PZ globals). `types/` sits outside every mod's `Contents/`, so
-  it is never packaged. When a mod starts using a new engine global, add it to
-  the stub with a signature verified against the installed game source rather
-  than silencing the warning. Check the whole repo with:
-  `lua-language-server --check=. --checklevel=Warning` from the repo root -
-  run it from the root, not a mod subfolder, or `.luarc.json` is not picked up.
+This file holds context — the things that change how an answer should be framed.
+The enforceable rules are imported at the bottom and load with it.
 
-- Before committing a change to any `.md` file this repo authored (root files,
-  `docs/*.md` — not the vendored `docs/pz-modding-guide/` snapshot), run
-  `npx prettier --check "*.md" "docs/*.md"` and fix anything it flags.
+## What makes this repo unusual
 
-- TwoManCrew installs into `~/Zomboid/mods/` by **copy**, via
-  `node deploy.mjs` from `two-man-crew/`. The directory junction that used to
-  live there was deleted 2026-08-22 — do not recreate it or suggest it. The
-  script wipes the destination first, so files deleted in the repo also leave
-  the install, and it refuses to run when the destination is a link.
-  `node deploy.mjs --check` compares repo and installed versions and writes
-  nothing. Never deploy while the game is running — ask first, since it
-  replaces the folder under a live session. For multiplayer, both players need
-  the same `modversion`; a mismatch there is a version problem, not an
-  install-method problem.
+**The game cannot run here.** Nothing in this environment loads Project Zomboid, so
+no change can be confirmed to work by running it. Syntax checks and the UI test
+suite are proofreading: they catch a typo, never a wrong method name, a nil at
+runtime, or a UI that draws garbage.
 
-- The installed copy is deliberately allowed to lag the repo. As of
-  2026-08-22 it is pinned to 0.1.0 so it matches the other player in a
-  co-op save, while the repo is ahead. Do not "sync" the install to the
-  repo without asking. To install a past version without disturbing the
-  working tree, extract it from its commit
-  (`git archive <commit> two-man-crew/Contents/mods/TwoManCrew`) and copy
-  from there — never `git checkout` an old version over the working tree.
+The practical effect on answers: any statement about runtime behaviour is a
+hypothesis, and should be labelled as one. Three consecutive TwoManCrew builds were
+shipped on code-reading alone and all three were wrong, each costing a round trip.
+When a fault only appears in-game, the move is instrumentation first and a fix
+second — ship `print()` calls, ask for one run, then fix what the log names. Asking
+for a two-minute run is cheaper than a wrong build.
 
-## Skills
+**The installed copy is deliberately behind the repo.** It is pinned so it matches
+the other player in a co-op save. An install/repo version gap is intended, not drift
+to be tidied away.
 
-The global superpowers catalog in `~/.claude/CLAUDE.md` applies here as written.
-Invoking a matching skill is mandatory, not advisory. Two that carry weight in
-this repo:
+**The language is Lua 5.1**, not current Lua. The game embeds Kahlua, so `goto`,
+`table.unpack`, integer division and bitwise operators do not exist here.
 
-- `superpowers:test-driven-development` — required **before** writing any test,
-  probe, benchmark, or instrumented copy of a source file. No skill invocation
-  means no test: make the fix and verify by diff instead. Tests improvised
-  after the fact cannot fail, so they prove nothing. Running the checks this
-  repo already has (`npm run check`, `npm test` in `two-man-crew/`) is not
-  authoring a test; adding cases to `test-ui.mjs` is.
-- `superpowers:verification-before-completion` — invoked in the closing turn of
-  any delivered work, alongside the `- [x]` evidence checklist.
+**Multiplayer is the default assumption.** Code paths differ between the host and a
+remote client, and a bug that is invisible in singleplayer can still be real —
+`sendServerCommand` reaches nobody in singleplayer, and `server/` files load on
+clients too.
 
-Nothing in this repo can be verified by running the game, so anything needing a
-live load is reported unverified rather than propped up with scaffolding built
-to manufacture proof.
+## Where things live
+
+```
+docs/               PZ and Lua reference material
+docs/conventions/   this repo's own rules (imported below)
+.claude/memory/     project facts, indexed and imported below
+_template/          copy this to start a new mod
+two-man-crew/       active mod, plus all build tooling
+```
 
 ## Project memory
 
-This repo's memories live in `.claude/memory/`, indexed by `.claude/memory/MEMORY.md`,
-and are versioned with the code so they travel with a clone. They used to sit outside
-the repo in the user profile, where they were invisible to anyone else and to a fresh
-checkout.
+This repo's memories live in `.claude/memory/`, indexed by
+`.claude/memory/MEMORY.md`, and are versioned with the code so they travel with a
+clone. They used to sit outside the repo in the user profile, where they were
+invisible to anyone else and to a fresh checkout.
 
 An index line is a pointer — read the memory file before acting on its topic. Global
 cross-project memories in `~/.claude/memories/` still apply on top of these; the two
 stores are consulted, never merged.
 
+## Rules
+
+Imported, so they load every session. These are binding, not reference.
+
+@docs/conventions/versioning.md
+@docs/conventions/deploy.md
+@docs/conventions/lua-and-checks.md
+@docs/conventions/skills.md
 @.claude/memory/MEMORY.md

@@ -170,10 +170,11 @@ Custom rows: `AttachmentEditorUI.lua:691`, `AnimationClipViewer.lua:24`.
 
 ## How this gets verified, and what stays open
 
-The repo's gates are `npm run check` (luaparse over every Lua file) and
-`npm test` (the UI under a real Lua VM). Both will be run.
+The repo's only gate is `npm run check` (luaparse over every Lua file). The
+fengari UI harness was deleted by decision on 2026-08-22, because it tested the
+mod against a hand-written fake of the engine.
 
-Neither is evidence about the game. They cannot catch a wrong method name, a nil
+That gate is not evidence about the game. They cannot catch a wrong method name, a nil
 at runtime, a wrong event, or a UI that draws garbage. This workspace cannot load
 Project Zomboid.
 

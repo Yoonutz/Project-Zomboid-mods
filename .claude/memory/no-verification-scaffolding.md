@@ -27,8 +27,9 @@ turn. Both of the ones written in this repo were thrown away, one of them as _"u
 - A test genuinely belongs → invoke `superpowers:test-driven-development` and follow it,
   including the red-green step. Never hand-roll one beside it.
 - The repo's existing checks are always fine to run: `npm run check` (parses 29 Lua files),
-  `npm test` (runs the UI under a real Lua VM). Running them is not authoring a test.
-  Adding cases to `test-ui.mjs` is authoring one, so it needs the skill.
+  Running it is not authoring a test. There is no local suite to add cases to -
+  the fengari UI harness was deleted 2026-08-22, see
+  [[pz-verification-is-ingame-only]].
 - Finish end to end without being asked again: rebase onto the remote, commit, push.
 - Close the turn by invoking `superpowers:verification-before-completion`.
 
