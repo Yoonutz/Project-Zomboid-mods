@@ -29,3 +29,5 @@ acting on its topic.
 - [superpowers-artifacts-committed-vs-local](superpowers-artifacts-committed-vs-local.md) — plans in `docs/superpowers/plans/` are committed and carry an execution-status banner; `.superpowers/` brainstorm scratch is gitignored on purpose
 - [pz-list-rows-draw-on-the-list](pz-list-rows-draw-on-the-list.md) — a custom `doDrawItem` must draw on the LIST; drawing on the parent window kills scrolling, shifts every row, and the stencil hides the evidence
 - [checker-must-strip-comments](checker-must-strip-comments.md) — a text-search check passes on a file whose code was deleted but whose explaining comment survives; strip comments, and prove every check red before trusting it green
+- [pz-chunk-free-evidence-sources](pz-chunk-free-evidence-sources.md) — registered global object systems (trough, rain barrel, farming) read map-wide; generators are NOT one and live in the Java-side registry, only ever called from client debug code
+- [pz-quest-mods-are-per-player](pz-quest-mods-are-per-player.md) — SSR and Soul Quest both key progress to one player, so neither can back a shared crew state; patterns only, both all-rights-reserved
