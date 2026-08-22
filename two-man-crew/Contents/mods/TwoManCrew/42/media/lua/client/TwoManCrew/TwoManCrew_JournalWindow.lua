@@ -65,6 +65,38 @@ local BUTTON_H = 40
 -- to breathe against the border.
 local ICON = 28
 
+-- Work Order skin.
+--
+-- The engine takes colour components as 0..1 floats, so each entry is the
+-- spec's hex divided by 255. Kept in one table because a colour repeated
+-- inline across twenty draw calls is a colour that drifts.
+--
+-- Palette and the role of each token:
+-- docs/superpowers/specs/2026-08-22-campaign-task-cards-design.md
+local SKIN = {
+	ground  = { r = 0.078, g = 0.071, b = 0.055 }, -- #14120E window body
+	panel   = { r = 0.118, g = 0.106, b = 0.082 }, -- #1E1B15 list background
+	rule    = { r = 0.227, g = 0.196, b = 0.145 }, -- #3A3225 dividers
+	ruleLit = { r = 0.353, g = 0.294, b = 0.196 }, -- #5A4B32 borders
+	text    = { r = 0.863, g = 0.835, b = 0.769 }, -- #DCD5C4 primary text
+	dim     = { r = 0.549, g = 0.514, b = 0.443 }, -- #8C8371 secondary text
+	faint   = { r = 0.384, g = 0.357, b = 0.298 }, -- #625B4C locked
+	active  = { r = 0.784, g = 0.569, b = 0.235 }, -- #C8913C current task
+	done    = { r = 0.498, g = 0.659, b = 0.361 }, -- #7FA85C met
+	blocked = { r = 0.706, g = 0.341, b = 0.290 }, -- #B4574A failed
+	unread  = { r = 0.431, g = 0.541, b = 0.627 }, -- #6E8AA0 unknown
+}
+
+-- Card geometry.
+local CARD_PAD = 6
+local SPINE_W = 3
+local LADDER_H = 7
+local CHECK_ROW_H = 14
+
+-- Above this many required units a ladder stops being countable, so the card
+-- draws a continuous bar instead. Only the 7- and 30-night holds exceed it.
+local LADDER_MAX = 12
+
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape
 -- of) purely as display labels/order - the actual completion state comes
