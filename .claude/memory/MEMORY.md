@@ -7,6 +7,7 @@ Cross-project facts live in `~/.claude/memories/` and are indexed by the global 
 both stores are consulted, never merged. An index line is a pointer — read the file before
 acting on its topic.
 
+- [work-on-master-no-branches](work-on-master-no-branches.md) — commit straight to `master` and push; no feature branches, no worktrees, no PRs, and never suggest one
 - [pz-vanilla-source-is-the-api-reference](pz-vanilla-source-is-the-api-reference.md) — the installed game ships its full Lua source; grep it to verify any API or copy a UI style
 - [pz-lua-diagnostics-setup](pz-lua-diagnostics-setup.md) — `.luarc.json` + `types/pz.lua` stubs; run `--check` from the repo root, and never "fix" the atan2 or duplicate-set-field warnings
 - [pz-mod-state-survives-reinstall](pz-mod-state-survives-reinstall.md) — re-adding or updating a build keeps campaign progress; state is in the save's ModData, not the mod folder

@@ -7,6 +7,19 @@ Invoking a matching skill is mandatory, not advisory. This file does not repeat 
 catalog — it records what each skill collides with **in this repo**, because most of
 them meet a constraint here that changes how they run.
 
+## Branching: there is none
+
+**Work directly on `master` and push there.** No feature branches, no
+worktrees, no pull requests. Set 2026-08-22 by the repo owner, replacing the
+earlier PR-based flow.
+
+The practical consequences, since several skills below assume otherwise:
+
+- Commit to `master` as work completes, and `git push origin master`.
+- Never create a branch "for safety" and never suggest one. If work needs to be
+  undone, that is what the commit history is for.
+- A plan's status banner names a version and a date, not a branch.
+
 ## Before writing code
 
 - `superpowers:brainstorming` — before any new mod, new UI surface, or behaviour
@@ -48,10 +61,8 @@ them meet a constraint here that changes how they run.
   `modversion` once for the batch, then checks the cross-file seams by hand —
   no agent can see across its own boundary. Full protocol:
   `.claude/memory/parallel-agents-by-file-ownership.md`.
-- `superpowers:using-git-worktrees` — for feature work needing isolation.
-  Note the deploy interaction: `node deploy.mjs` copies into `~/Zomboid/mods/`
-  from whichever tree runs it, and the install is deliberately pinned behind
-  the repo. Deploying from a worktree silently replaces the pinned install.
+- `superpowers:using-git-worktrees` — **do not use it here.** Work happens
+  directly on `master` and is pushed there; see the branching rule below.
 
 ## Debugging
 
@@ -69,16 +80,16 @@ them meet a constraint here that changes how they run.
 
 - `superpowers:verification-before-completion` — invoked in the closing turn of
   any delivered work, alongside the `- [x]` evidence checklist.
-- `superpowers:requesting-code-review` — before merging or on finishing a major
-  feature. This repo does use PRs (`Merge pull request #1`), so review belongs
-  before the merge, not after.
+- `superpowers:requesting-code-review` — on finishing a major feature. There
+  is no merge to gate now, so review happens before the push rather than
+  before a merge.
 - `superpowers:receiving-code-review` — when acting on review feedback,
   especially feedback that looks wrong. Verify the claim against the game
   source before agreeing or dismissing; see
   `.claude/memory/pz-vanilla-source-is-the-api-reference.md`.
-- `superpowers:finishing-a-development-branch` — deciding merge vs PR vs
-  cleanup once the checks pass. "Checks pass" here means `npm run check`,
-  which does **not** mean the mod works in-game.
+- `superpowers:finishing-a-development-branch` — **not applicable.** There is
+  no development branch to finish: commit to `master` and push. "Checks pass"
+  here means `npm run check`, which does **not** mean the mod works in-game.
 
 Nothing in this repo can be verified by running the game, so anything needing a
 live load is reported unverified rather than propped up with scaffolding built
@@ -96,7 +107,7 @@ ever run inside Project Zomboid? Almost always the answer is no, and the banner
 says so in those words rather than implying otherwise.
 
 ```markdown
-> **STATUS: written, NOT TESTED. Branch `<branch>`, <date>, version `<x.y.z>`.**
+> **STATUS: written, NOT TESTED. <date>, version `<x.y.z>`.**
 >
 > **This code has never been executed.** No Project Zomboid session has loaded
 > it. Nothing below is known to work.
