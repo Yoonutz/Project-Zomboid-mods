@@ -394,14 +394,18 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	local prefs = TwoManCrew.Prefs.get(player)
 	local context = ISContextMenu.get(0, self:getAbsoluteX() + x, self:getAbsoluteY() + y)
 
-	local sizeOption = context:addOption("Panel size", self)
+	-- Sizes are numbered, not given as percentages. "125%" made the player do
+	-- arithmetic to find out whether it was bigger than what they had; "3" does
+	-- not. This one setting drives the badge, the journal window and the
+	-- journal's buttons together, so picking a size here changes all of them.
+	local sizeOption = context:addOption("Size", self)
 	local sizeMenu = context:getNew(context)
 	context:addSubMenu(sizeOption, sizeMenu)
+	local current = TwoManCrew.Prefs.scaleStep(prefs.scale)
 	for i = 1, #TwoManCrew.Prefs.SCALES do
 		local scale = TwoManCrew.Prefs.SCALES[i]
-		local label = tostring(math.floor(scale * 100)) .. "%"
-		local opt = sizeMenu:addOption(label, self, TwoManCrewPanel.onSetScale, scale)
-		if math.abs(prefs.scale - scale) < 0.01 then
+		local opt = sizeMenu:addOption(tostring(i), self, TwoManCrewPanel.onSetScale, scale)
+		if i == current then
 			sizeMenu:setOptionChecked(opt, true)
 		end
 	end

@@ -37,7 +37,28 @@ local DEFAULTS = {
 
 -- Scale steps offered in the right-click menu. Kept coarse: a slider in a
 -- context menu is worse than four honest choices.
-TwoManCrew.Prefs.SCALES = { 0.85, 1.0, 1.25, 1.5 }
+-- Size steps, picked by NUMBER rather than by percentage.
+--
+-- These used to be shown as "85%", "100%", "125%". A percentage asks the player
+-- to work out what it is a percentage of; a step number just says bigger. The
+-- range also stopped at 1.5, which was not big enough to read comfortably, so
+-- it now runs to 3.
+--
+-- The index into this table IS the number the player clicks, so the order is
+-- part of the contract: never reorder or insert in the middle, only append.
+TwoManCrew.Prefs.SCALES = { 0.85, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0 }
+
+-- The step number for a stored scale, for ticking the current entry in a menu.
+function TwoManCrew.Prefs.scaleStep(scale)
+	local best, bestGap = 1, math.huge
+	for i = 1, #TwoManCrew.Prefs.SCALES do
+		local gap = math.abs(TwoManCrew.Prefs.SCALES[i] - (scale or 1.0))
+		if gap < bestGap then
+			best, bestGap = i, gap
+		end
+	end
+	return best
+end
 
 -- Returns a fresh copy of the defaults. Callers that have no player to read
 -- from get this instead of the DEFAULTS table itself: every mutator writes

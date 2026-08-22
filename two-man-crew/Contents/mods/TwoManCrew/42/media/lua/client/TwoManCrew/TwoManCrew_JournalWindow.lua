@@ -97,6 +97,36 @@ local CHECK_ROW_H = 14
 -- draws a continuous bar instead. Only the 7- and 30-night holds exceed it.
 local LADDER_MAX = 12
 
+-- The list paints a scrollbar down its right edge. Right-aligned text that
+-- measures against the full width slides underneath it and gets clipped, which
+-- is what turned "could not read the ground" into "could not rea".
+local SCROLLBAR_W = 14
+
+-- How often the open journal re-surveys, in real milliseconds. Two seconds is
+-- fast enough that walking into a building updates its row while you are still
+-- standing there, and slow enough that the survey is not competing with the
+-- frame. It only runs while the window is open.
+local POLL_MS = 2000
+
+-- Size. Read from the same player preference the crew badge uses, so one choice
+-- drives the badge, this window and its buttons together
+-- (TwoManCrew_PanelPrefs.lua, SCALES).
+function TwoManCrewJournalWindow:scale()
+	local prefs = TwoManCrew.Prefs and TwoManCrew.Prefs.get and TwoManCrew.Prefs.get()
+	return (prefs and prefs.scale) or 1.0
+end
+
+-- The engine has a fixed set of fonts, so text cannot scale continuously the
+-- way a rectangle can. Pick the largest font the current size justifies; the
+-- rest of the layout is measured from it, never from a constant.
+function TwoManCrewJournalWindow:font()
+	local scale = self:scale()
+	if scale >= 2.0 then return UIFont.Large end
+	if scale >= 1.25 then return UIFont.Medium end
+	if scale >= 1.0 then return UIFont.Small end
+	return UIFont.NewSmall
+end
+
 -- Building tiers and livestock stages, per GOALS.md. Kept here (not in the
 -- Tiers server module, which this client code cannot see the final shape
 -- of) purely as display labels/order - the actual completion state comes
@@ -168,7 +198,7 @@ function TwoManCrewJournalWindow:createChildren()
 	-- to itemheight after this - the list owns row height now. Vanilla drives
 	-- list boxes the same way at
 	-- client/DebugUIs/DebugMenu/GlobalModData/GlobalModData.lua:42.
-	self.list:setFont(UIFont.NewSmall, 1)
+	self.list:setFont(self:font(), 1)
 	self.list.selected = -1
 	self.list.drawBorder = true
 
@@ -178,7 +208,7 @@ function TwoManCrewJournalWindow:createChildren()
 		local l = ISScrollingListBox:new(0, 0, self.width - PAD * 2, ROW)
 		l:initialise()
 		l:instantiate()
-		l:setFont(UIFont.NewSmall, 1)
+		l:setFont(self:font(), 1)
 		l.selected = -1
 		l.drawBorder = true
 		return l
@@ -226,7 +256,13 @@ function TwoManCrewJournalWindow:createChildren()
 			target:onCardClicked(item)
 		end
 	end)
-	self:addChild(self.list)
+
+	-- The Orders list is NOT added to the window. ISTabPanel:addView already
+	-- adopts it (ISTabPanel.lua:484 calls addChild and sets view.parent), and
+	-- adding it here as well gave it two parents: the window drew it a second
+	-- time, at window-relative 0,0, straight over the tab strip. That is why
+	-- the tabs were invisible, the rows started in the top-left corner, and
+	-- every right-aligned reason ran off the edge of the panel.
 
 	-- Icon buttons rather than three wide text buttons. The labels were the
 	-- widest thing in the window and forced a 460px minimum width for what
@@ -273,6 +309,14 @@ end
 -- 34px off the right edge. Both are now derived, and the window is
 -- resizable, so this runs again on every resize.
 function TwoManCrewJournalWindow:layout()
+	-- Re-apply the font on every layout, not just at construction. setFont sets
+	-- the font, its height and the row height together
+	-- (ISScrollingListBox.lua:703-708), so this is what makes a size change
+	-- actually reach the lists rather than only the buttons.
+	local font = self:font()
+	for _, list in ipairs({ self.list, self.buildingsList, self.livestockList, self.journalList }) do
+		if list then list:setFont(font, 1) end
+	end
 	local top = self:titleBarHeight() + PAD
 
 	-- The bottom strip belongs to the resize widgets (ISCollapsableWindow.lua:34-49
@@ -282,7 +326,7 @@ function TwoManCrewJournalWindow:layout()
 	-- bottom of every button was overdrawn and the bottom edge swallowed the clicks.
 	-- Reserve the strip and sit the buttons above it.
 	local rh = self.resizable and self:resizeWidgetHeight() or 0
-	local buttonsY = self.height - rh - BUTTON_H - PAD
+	local buttonsY = self.height - rh - math.floor(BUTTON_H * self:scale()) - PAD
 
 	-- List stops above the button row, never behind it.
 	local listY = top + ROW
@@ -313,6 +357,13 @@ function TwoManCrewJournalWindow:layout()
 	-- stretch because their labels needed the room; three icons stretched to
 	-- a third of a wide window each would just be three small pictures
 	-- marooned in the middle of large empty rectangles.
+	-- Buttons take their size from the same preference as everything else, so
+	-- "the icons are tiny" is fixed by picking a bigger number once rather than
+	-- by editing a constant in here.
+	local scale = self:scale()
+	local buttonSize = math.floor(BUTTON_W * scale)
+	local iconSize = math.floor(ICON * scale)
+
 	local buttons = { self.refreshButton, self.claimButton }
 	local gap = 6
 
@@ -320,9 +371,13 @@ function TwoManCrewJournalWindow:layout()
 	for i = 1, #buttons do
 		buttons[i]:setX(x)
 		buttons[i]:setY(buttonsY)
-		buttons[i]:setWidth(BUTTON_W)
-		buttons[i]:setHeight(BUTTON_H)
-		x = x + BUTTON_W + gap
+		buttons[i]:setWidth(buttonSize)
+		buttons[i]:setHeight(buttonSize)
+		if buttons[i].image then
+			buttons[i].forcedWidthImage = iconSize
+			buttons[i].forcedHeightImage = iconSize
+		end
+		x = x + buttonSize + gap
 	end
 end
 
@@ -398,11 +453,23 @@ end
 -- on-demand rescan entry point,
 -- and without it the server's requestRestorationCheck handler would have no
 -- caller at all.
+-- Asks the server to re-survey the claim, without telling the player.
+--
+-- The open window polls this, so the announced version below would put
+-- "Checking the claim..." over the screen every two seconds. Announce a survey
+-- the player asked for; stay quiet about the ones the panel runs for itself.
+function TwoManCrewJournalWindow:requestSurvey()
+	local player = getPlayer()
+	if not player then return end
+	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {})
+end
+
+-- The announced survey, for an explicit press.
 function TwoManCrewJournalWindow:onCheckRestoration()
 	local player = getPlayer()
 	if not player then return end
 
-	TwoManCrew.requestFromServer(player, "requestRestorationCheck", {})
+	self:requestSurvey()
 	HaloTextHelper.addText(player, "Checking the claim...")
 end
 
@@ -457,13 +524,26 @@ local MARK_COLOUR = { yes = SKIN.done, no = SKIN.blocked, unknown = SKIN.unread 
 -- so the drawing and the hit-testing can never disagree about where a card
 -- ends - a disagreement would put the click on the wrong card.
 function TwoManCrewJournalWindow:cardHeight(card)
-	local lineH = getTextManager():getFontHeight(UIFont.NewSmall)
-	local h = lineH + 4 + LADDER_H + 3 + 2
+	local lineH = getTextManager():getFontHeight(self:font())
+	local scale = self:scale()
+
+	-- Every gap is derived from the font height and the size, never from a
+	-- constant, so a bigger size grows the row rather than cramming a large
+	-- font into a small one.
+	local h = lineH + math.floor(4 * scale) + math.floor(LADDER_H * scale)
+		+ math.floor(3 * scale) + 2
 	if card.context then h = h + lineH end
 	if card.expanded then
-		h = h + #(card.checks or {}) * CHECK_ROW_H
+		h = h + #(card.checks or {}) * math.max(lineH + 2, math.floor(CHECK_ROW_H * scale))
 	end
 	return h
+end
+
+-- The height of one check row inside an open card. Shared by the renderer and
+-- cardHeight so the two cannot disagree about where a card ends.
+function TwoManCrewJournalWindow:checkRowHeight()
+	local lineH = getTextManager():getFontHeight(self:font())
+	return math.max(lineH + 2, math.floor(CHECK_ROW_H * self:scale()))
 end
 
 -- Draws one card, and its checks when it is open. Returns the y of the next
@@ -479,11 +559,13 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 		return y + ((item and item.height) or self.list.itemheight or 20)
 	end
 
-	local lineH = getTextManager():getFontHeight(UIFont.NewSmall)
+	local font = self:font()
+	local lineH = getTextManager():getFontHeight(font)
 	local height = self:cardHeight(card)
 	local top = y
 	local x = CARD_PAD + SPINE_W + 5
-	local w = self.list and self.list:getWidth() or self.width
+	-- Usable width, not full width: the scrollbar owns the right-hand gutter.
+	local w = (self.list and self.list:getWidth() or self.width) - SCROLLBAR_W
 
 	-- Body. Alternating rows separate adjacent cards without a heavy rule.
 	local bg = alt and SKIN.panel or SKIN.ground
@@ -496,25 +578,31 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 
 	-- Chevron, task, count.
 	self:drawText(card.expanded and "v" or ">", x, y + 2,
-		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
 
 	local taskColour = SKIN.text
 	if card.state == "locked" or card.state == "done" then taskColour = SKIN.dim end
-	self:drawText(card.task, x + 12, y + 2,
-		taskColour.r, taskColour.g, taskColour.b, 1, UIFont.NewSmall)
+	local countW = getTextManager():MeasureStringX(self:font(),
+		card.state == "locked" and "locked"
+		or (tostring(card.done or 0) .. " / " .. tostring(card.target or 0)))
+	self:drawText(
+		TwoManCrewJournalWindow.fit(card.task, w - CARD_PAD - (x + 12) - countW - 10, font),
+		x + 12, y + 2,
+		taskColour.r, taskColour.g, taskColour.b, 1, self:font())
 
 	local count = "locked"
 	if card.state ~= "locked" then
 		count = tostring(card.done or 0) .. " / " .. tostring(card.target or 0)
 	end
-	local cw = getTextManager():MeasureStringX(UIFont.NewSmall, count)
+	local cw = getTextManager():MeasureStringX(self:font(), count)
 	self:drawText(count, w - CARD_PAD - cw, y + 2,
-		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
 
 	y = y + lineH + 4
 
 	-- Progress. A ladder while the target is small enough to count, a
 	-- continuous bar once it is not - see LADDER_MAX.
+	local ladderH = math.floor(LADDER_H * self:scale())
 	local barW = w - x - CARD_PAD
 	local target = card.target or 0
 	local done = card.done or 0
@@ -525,25 +613,25 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 		for i = 1, target do
 			local cx = x + (i - 1) * (cellW + gap)
 			local c = (i <= done) and SKIN.done or SKIN.ground
-			self:drawRect(cx, y, cellW, LADDER_H, 1, c.r, c.g, c.b)
-			self:drawRectBorder(cx, y, cellW, LADDER_H, 1,
+			self:drawRect(cx, y, cellW, ladderH, 1, c.r, c.g, c.b)
+			self:drawRectBorder(cx, y, cellW, ladderH, 1,
 				SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
 		end
 	else
-		self:drawRect(x, y, barW, LADDER_H, 1, SKIN.ground.r, SKIN.ground.g, SKIN.ground.b)
+		self:drawRect(x, y, barW, ladderH, 1, SKIN.ground.r, SKIN.ground.g, SKIN.ground.b)
 		if target > 0 and done > 0 then
-			self:drawRect(x, y, barW * (done / target), LADDER_H, 1,
+			self:drawRect(x, y, barW * (done / target), ladderH, 1,
 				SKIN.active.r, SKIN.active.g, SKIN.active.b)
 		end
-		self:drawRectBorder(x, y, barW, LADDER_H, 1,
+		self:drawRectBorder(x, y, barW, ladderH, 1,
 			SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
 	end
-	y = y + LADDER_H + 3
+	y = y + ladderH + math.floor(3 * self:scale())
 
 	-- Context, so the ladder is never anonymous.
 	if card.context then
 		self:drawText(card.context, x, y,
-			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
 		y = y + lineH
 	end
 
@@ -552,15 +640,23 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 		for _, chk in ipairs(card.checks or {}) do
 			local mc = MARK_COLOUR[chk.mark] or SKIN.dim
 			self:drawText(MARK_GLYPH[chk.mark] or "?", x + 8, y,
-				mc.r, mc.g, mc.b, 1, UIFont.NewSmall)
-			self:drawText(chk.label, x + 22, y,
-				SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+				mc.r, mc.g, mc.b, 1, self:font())
+			local labelRoom = w - CARD_PAD - (x + 22)
 			if chk.why then
-				local ww = getTextManager():MeasureStringX(UIFont.NewSmall, chk.why)
-				self:drawText(chk.why, w - CARD_PAD - ww, y,
-					SKIN.faint.r, SKIN.faint.g, SKIN.faint.b, 1, UIFont.NewSmall)
+				labelRoom = labelRoom
+					- getTextManager():MeasureStringX(self:font(), chk.why) - 10
 			end
-			y = y + CHECK_ROW_H
+			self:drawText(TwoManCrewJournalWindow.fit(chk.label, labelRoom, font), x + 22, y,
+				SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, self:font())
+			-- The reason is right-aligned, so it can collide with a long label.
+			-- Give the label whatever is left and trim it rather than letting
+			-- the two overlap into an unreadable smear.
+			if chk.why then
+				local ww = getTextManager():MeasureStringX(self:font(), chk.why)
+				self:drawText(chk.why, w - CARD_PAD - ww, y,
+					SKIN.faint.r, SKIN.faint.g, SKIN.faint.b, 1, self:font())
+			end
+			y = y + self:checkRowHeight()
 		end
 	end
 
@@ -569,6 +665,32 @@ function TwoManCrewJournalWindow:drawCard(y, item, alt)
 
 	item.height = height
 	return top + height
+end
+
+-- Trims a string to fit a pixel width, ending in ".." when it had to cut.
+--
+-- The engine has no clipped-text draw, so an over-long string simply keeps
+-- painting past the panel edge and over whatever is there. Measuring and
+-- trimming is the only way to keep a row readable at any window size.
+function TwoManCrewJournalWindow.fit(text, room, font)
+	text = tostring(text or "")
+	if room <= 0 then return "" end
+
+	font = font or UIFont.Small
+	local manager = getTextManager()
+	if manager:MeasureStringX(font, text) <= room then
+		return text
+	end
+
+	-- Linear scan from the end. These strings are short and this runs once per
+	-- visible row, so a binary search would buy nothing worth the complexity.
+	for i = #text - 1, 1, -1 do
+		local candidate = string.sub(text, 1, i) .. ".."
+		if manager:MeasureStringX(font, candidate) <= room then
+			return candidate
+		end
+	end
+	return ""
 end
 
 -- Names the stage a card belongs to, for the context line under the ladder.
@@ -623,7 +745,14 @@ function TwoManCrewJournalWindow.buildCards(progress, detail)
 
 			table.insert(checks, {
 				mark = mark,
-				label = string.format("Building %d - %s units", i, tostring(row.units)),
+				-- Coordinates, because "Building 3" is not something a player can
+				-- walk to. The server already sends x and y per building
+				-- (TwoManCrew_Restoration.lua:445-446); the old label threw them
+				-- away and left four indistinguishable rows.
+				label = (type(row.x) == "number" and type(row.y) == "number")
+					and string.format("#%d at %d,%d - %s units",
+						i, row.x, row.y, tostring(row.units))
+					or string.format("#%d - %s units", i, tostring(row.units)),
 				why = TwoManCrewJournalWindow.describeRow(row),
 			})
 		end
@@ -912,6 +1041,38 @@ function TwoManCrewJournalWindow:prerender()
 	local ruleY = self:titleBarHeight()
 	self:drawRect(0, ruleY, self.width, 1, 1, SKIN.active.r, SKIN.active.g, SKIN.active.b)
 	self:drawRect(0, ruleY + 1, self.width, 1, 1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
+
+	-- The size can be changed from the crew badge's menu while this window is
+	-- open. Nothing tells the window about it, so notice the change here and
+	-- lay out again; without this the new size only appeared after a resize.
+	local scaleNow = self:scale()
+	if self.lastScale ~= scaleNow then
+		self.lastScale = scaleNow
+		self.cards = nil
+		self:layout()
+	end
+
+	-- Keep the panel live while it is open.
+	--
+	-- Every per-building verdict is a snapshot: "nobody here - stand inside"
+	-- stays on screen until something re-surveys, so walking into the building
+	-- changed nothing and the panel looked broken. It was not stale data, it
+	-- was no new data at all.
+	--
+	-- The survey is the expensive call, so it is throttled rather than run per
+	-- frame, and only while the window is actually on screen. Closed, this
+	-- costs nothing.
+	local nowMs = getTimestampMs()
+	if not self.nextPollMs or nowMs >= self.nextPollMs then
+		self.nextPollMs = nowMs + POLL_MS
+		if TwoManCrew.Client and TwoManCrew.Client.requestClaimDetail then
+			TwoManCrew.Client.requestClaimDetail(getPlayer())
+		end
+		if TwoManCrew.Client and TwoManCrew.Client.requestTierProgress then
+			TwoManCrew.Client.requestTierProgress(getPlayer())
+		end
+		self:requestSurvey()
+	end
 
 	-- Repopulate only when the underlying report changed (or the view was
 	-- just toggled, which nils these out), so the list does not rebuild
