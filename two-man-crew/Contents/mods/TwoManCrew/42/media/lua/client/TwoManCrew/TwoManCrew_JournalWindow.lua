@@ -148,6 +148,13 @@ end
 function TwoManCrewJournalWindow:createChildren()
 	ISCollapsableWindow.createChildren(self)
 
+	-- The base class paints its title bar and body from these two tables
+	-- (ISCollapsableWindow.lua:152-166 and :179-197), so restyling the chrome is
+	-- an assignment rather than a fight with the parent class. Slightly
+	-- translucent, because this window opens over a live game view.
+	self.backgroundColor = { r = SKIN.ground.r, g = SKIN.ground.g, b = SKIN.ground.b, a = 0.95 }
+	self.borderColor = { r = SKIN.ruleLit.r, g = SKIN.ruleLit.g, b = SKIN.ruleLit.b, a = 1 }
+
 	local top = self:titleBarHeight() + PAD
 
 	self.claimLabel = nil
@@ -885,6 +892,17 @@ function TwoManCrewJournalWindow:prerender()
 		self:drawTextureScaled(self.titleIcon, iconX, 2, size, size, 1, 1, 1, 1)
 	end
 
+	-- One amber rule under the title, doubled with a dark line beneath it. It is
+	-- the single bright horizontal in the window, and it is what makes the panel
+	-- read as a work order posted on a wall rather than as a system dialog.
+	--
+	-- drawRect takes alpha BEFORE the rgb triplet (ISUIElement.lua:1191). The
+	-- drawText calls below take it LAST. That inconsistency is the engine's, not
+	-- a typo here.
+	local ruleY = self:titleBarHeight()
+	self:drawRect(0, ruleY, self.width, 1, 1, SKIN.active.r, SKIN.active.g, SKIN.active.b)
+	self:drawRect(0, ruleY + 1, self.width, 1, 1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
+
 	-- Repopulate only when the underlying report changed (or the view was
 	-- just toggled, which nils these out), so the list does not rebuild
 	-- every frame.
@@ -908,17 +926,17 @@ function TwoManCrewJournalWindow:prerender()
 	if summary and summary.count and summary.count > 0 then
 		local restored = summary.restored or 0
 		local text = "Claim: " .. restored .. " of " .. summary.count .. " buildings restored"
-		self:drawText(text, PAD, y, 0.85, 0.8, 0.6, 1, UIFont.Small)
+		self:drawText(text, PAD, y, SKIN.active.r, SKIN.active.g, SKIN.active.b, 1, UIFont.Small)
 	elseif refusal then
 		-- The server surveyed and said no. Kept on screen rather than left to
 		-- the halo text that fades: a player who presses claim and sees only
 		-- a vanishing message reads the button as broken, which is what was
 		-- reported. Amber, because it is an answer and not an error.
-		self:drawText("No claim: " .. refusal, PAD, y, 0.9, 0.7, 0.4, 1, UIFont.Small)
+		self:drawText("No claim: " .. refusal, PAD, y, SKIN.blocked.r, SKIN.blocked.g, SKIN.blocked.b, 1, UIFont.Small)
 	else
 		-- The button says "Claim" now, not "Claim a block", so the hint names
 		-- the icon by its tooltip word rather than a label that no longer exists.
-		self:drawText("No claim yet - press the flag button", PAD, y, 0.6, 0.6, 0.6, 1, UIFont.Small)
+		self:drawText("No claim yet - press the flag button", PAD, y, SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.Small)
 	end
 
 	-- Refresh acknowledgement. A crew with an empty journal saw the list
