@@ -290,30 +290,9 @@ end
 -- Right click opens the settings menu: scale, what to show, lock, reset.
 -- Pattern copied from vanilla's own HUD context menu (client/Chat/ISChat.lua:246
 -- ISContextMenu.get + addOption + getNew/addSubMenu).
--- Wheel over the badge zooms it, with no step list and no maximum.
---
--- Plain wheel scales both axes together. Shift stretches width only, Ctrl
--- height only, so the icon can be shaped as well as sized.
---
--- Returning true consumes the event: without it the wheel would also scroll
--- whatever sits behind the badge.
-function TwoManCrewPanel:onMouseWheel(del)
-	-- del is -1 or 1. A multiplier rather than a fixed pixel step, so the badge
-	-- grows at the same visual rate whether it is tiny or huge.
-	local factor = del < 0 and 1.1 or (1 / 1.1)
-
-	local fw, fh = factor, factor
-	if isShiftKeyDown() then
-		fh = 1
-	elseif isCtrlKeyDown() then
-		fw = 1
-	end
-
-	TwoManCrew.Prefs.zoomBadge(getPlayer(), fw, fh)
-	return true
-end
-
 function TwoManCrewPanel:onRightMouseDown(x, y)
+	self.lastMenuX = x
+	self.lastMenuY = y
 	local player = getPlayer()
 	if not player then return true end
 
@@ -324,9 +303,28 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	-- arithmetic to find out whether it was bigger than what they had; "3" does
 	-- not. This one setting drives the badge, the journal window and the
 	-- journal's buttons together, so picking a size here changes all of them.
-	-- No size submenu. The wheel does it, continuously and without a ceiling,
-	-- which is what a fixed list of numbers could never offer.
-	context:addOption("Reset icon size", self, TwoManCrewPanel.onResetBadgeSize)
+	-- Size by increment, not by preset.
+	--
+	-- A fixed list of numbers means the size you want is whichever listed value
+	-- is least wrong. These step from wherever you are, so the badge converges
+	-- on the size you actually want, and the current pixels are on the label so
+	-- you can see where you are.
+	--
+	-- The menu reopens after each press, so + + + is three clicks rather than
+	-- three right-clicks. Deliberately NOT the mouse wheel: scrolling over the
+	-- badge mid-game would resize it by accident.
+	local sizeOption = context:addOption(
+		string.format("Icon size: %d x %d", prefs.badgeW or 32, prefs.badgeH or 32), self)
+	local sizeMenu = context:getNew(context)
+	context:addSubMenu(sizeOption, sizeMenu)
+
+	sizeMenu:addOption("-   smaller", self, TwoManCrewPanel.onStepSize, -1, -1)
+	sizeMenu:addOption("+   bigger", self, TwoManCrewPanel.onStepSize, 1, 1)
+	sizeMenu:addOption("-   narrower", self, TwoManCrewPanel.onStepSize, -1, 0)
+	sizeMenu:addOption("+   wider", self, TwoManCrewPanel.onStepSize, 1, 0)
+	sizeMenu:addOption("-   shorter", self, TwoManCrewPanel.onStepSize, 0, -1)
+	sizeMenu:addOption("+   taller", self, TwoManCrewPanel.onStepSize, 0, 1)
+	sizeMenu:addOption("Reset to 32 x 32", self, TwoManCrewPanel.onResetBadgeSize)
 
 	local lockOpt = context:addOption("Lock position", self, TwoManCrewPanel.onToggle, "locked")
 	context:setOptionChecked(lockOpt, prefs.locked)
@@ -334,6 +332,26 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 	context:addOption("Reset panel", self, TwoManCrewPanel.onReset)
 
 	return true
+end
+
+-- Steps the badge by one increment on either axis.
+--
+-- dw and dh are -1, 0 or 1: which direction each axis moves, or not at all.
+-- The step is proportional rather than a flat pixel count, so a press changes
+-- the badge by the same visible amount whether it is small or large, and there
+-- is no ceiling to run into.
+function TwoManCrewPanel:onStepSize(dw, dh)
+	local function factor(direction)
+		if direction > 0 then return 1.15 end
+		if direction < 0 then return 1 / 1.15 end
+		return 1
+	end
+
+	TwoManCrew.Prefs.zoomBadge(getPlayer(), factor(dw), factor(dh))
+
+	-- Reopen where it was, so repeated presses do not mean repeated
+	-- right-clicks. Without this, "+" is a four-action loop every time.
+	self:onRightMouseDown(self.lastMenuX or 0, self.lastMenuY or 0)
 end
 
 function TwoManCrewPanel:onResetBadgeSize()
