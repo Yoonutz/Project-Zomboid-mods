@@ -31,6 +31,21 @@ function check(name, pass, detail) {
 // The PZ stub, written in Lua so the mod's own require/derive chain works.
 // ---------------------------------------------------------------------------
 const STUB = String.raw`
+-- Kahlua (Lua 5.1) compatibility shim.
+--
+-- fengari is a Lua 5.3 VM, but Project Zomboid embeds Kahlua, which is 5.1.
+-- Left alone the harness would happily run code the game rejects. These two
+-- lines close the gap that actually bites: 5.1 has a global unpack and no
+-- table.unpack, and its integer division is math.floor, not //.
+--
+-- The mod is also scanned for 5.2+ syntax before any of this runs - see
+-- assertLua51Dialect in the JS below. Kahlua provides pcall but NOT xpcall
+-- (verified by reading se/krka/kahlua/stdlib/BaseLib.class in
+-- projectzomboid.jar), so xpcall is removed here to make its absence real.
+unpack = unpack or table.unpack
+table.unpack = nil
+xpcall = nil
+
 -- Mouse/UI state the harness drives from the test script below.
 MOUSE = { x = 0, y = 0, down = false }
 
@@ -239,7 +254,10 @@ Events = {
   OnClientCommand = mkEvent("OnClientCommand"),
 }
 function FIRE(name, ...)
-  for _, h in ipairs({ table.unpack(EVENTS[name].handlers) }) do h(...) end
+  -- unpack, not table.unpack: PZ runs Lua 5.1 (Kahlua), where table.unpack
+  -- does not exist. The harness deliberately uses the 5.1 spelling so stub
+  -- code cannot drift into a dialect the game will not run.
+  for _, h in ipairs({ unpack(EVENTS[name].handlers) }) do h(...) end
 end
 
 function isClient() return false end
@@ -291,6 +309,42 @@ function collectSources() {
 }
 
 const SOURCES = collectSources();
+
+// PZ embeds Kahlua, a Lua 5.1 VM. fengari is 5.3, so a construct the game
+// cannot run would pass here silently. Scan the mod's own sources for the
+// 5.2+ features Kahlua lacks before executing anything.
+//
+// Checked against the shipped game source, which uses table.unpack zero
+// times, goto zero times, and pcall zero times while Kahlua's BaseLib does
+// implement pcall - so pcall is allowed and xpcall is not.
+function assertLua51Dialect() {
+  const banned = [
+    [/\btable\.unpack\b/, "table.unpack (5.1 has the global unpack)"],
+    [/\bxpcall\b/, "xpcall (not in Kahlua's BaseLib)"],
+    [/\bgoto\s+\w/, "goto (5.2+)"],
+    [/::\w+::/, "goto label (5.2+)"],
+    [/<\s*(const|close)\s*>/, "attribute syntax (5.4)"],
+  ];
+
+  const problems = [];
+  for (const [key, src] of Object.entries(SOURCES)) {
+    src.split(/\r?\n/).forEach((line, i) => {
+      // Ignore comments - prose about these features is fine.
+      if (/^\s*--/.test(line)) return;
+      for (const [re, what] of banned) {
+        if (re.test(line)) problems.push(key + ":" + (i + 1) + " uses " + what);
+      }
+    });
+  }
+
+  check(
+    "mod code stays inside Lua 5.1, which is what the game runs",
+    problems.length === 0,
+    problems.slice(0, 3).join("; ")
+  );
+}
+
+assertLua51Dialect();
 
 function makeVM() {
   const L = lauxlib.luaL_newstate();
