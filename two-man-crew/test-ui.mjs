@@ -1002,6 +1002,128 @@ function crewPanelVM() {
 }
 
 // ---------------------------------------------------------------------------
+// Card geometry and drawing.
+//
+// cardHeight is the single owner of how tall a card is. Drawing and
+// hit-testing both go through it, so if it were wrong the click would land on
+// the wrong card - the exact class of bug the parser cannot see.
+// ---------------------------------------------------------------------------
+{
+  const L = makeVM();
+  runLua(L, `
+    for _, p in ipairs({ "Refresh", "Claim", "View", "Journal" }) do
+      REGISTER_TEXTURE("media/ui/TwoManCrew_" .. p .. ".png")
+    end
+    TwoManCrew = TwoManCrew or {}
+    TwoManCrew.Client = {
+      requestCrewReport = function() end, requestTierProgress = function() end,
+      requestClaimDetail = function() end, requestClaim = function() end,
+    }
+  `, "pre");
+  loadFile(L, "shared/TwoManCrew/TwoManCrew_Config.lua");
+  loadFile(L, "client/TwoManCrew/TwoManCrew_JournalWindow.lua");
+
+  runLua(L, `
+    CARD = { task = "restore one building fully", context = "Tier 1 of 5",
+             state = "active", done = 1, target = 3,
+             checks = { { mark = "yes", label = "a", why = "b" },
+                        { mark = "no",  label = "c", why = "d" },
+                        { mark = "unknown", label = "e" } },
+             expanded = false }
+    W = TwoManCrewJournalWindow:new(0, 0, 440, 320)
+    W:initialise() W:instantiate() W:addToUIManager()
+    W:createChildren()
+    H_SHUT = W:cardHeight(CARD)
+    CARD.expanded = true
+    H_OPEN = W:cardHeight(CARD)
+    CARD.expanded = false
+  `, "cardHeight");
+
+  check("cardHeight: an open card is taller than a shut one",
+    evalLua(L, `H_OPEN > H_SHUT`) === true,
+    `shut=${evalLua(L, `H_SHUT`)} open=${evalLua(L, `H_OPEN`)}`);
+
+  // Three checks at 14px each. If this drifts, the click handler and the
+  // renderer have started disagreeing about where a card ends.
+  check("cardHeight: opening adds exactly one row per check",
+    evalLua(L, `H_OPEN - H_SHUT`) === 42,
+    `delta=${evalLua(L, `H_OPEN - H_SHUT`)}, expected 42`);
+
+  runLua(L, `
+    DRAWN = {}
+    ROW = { text = CARD.task, item = CARD, height = W:cardHeight(CARD) }
+    NEXT_Y = W:drawCard(0, ROW, false)
+  `, "drawCard");
+
+  check("drawCard: advances to the next row by the card's own height",
+    evalLua(L, `NEXT_Y == W:cardHeight(CARD)`) === true,
+    `next=${evalLua(L, `NEXT_Y`)} height=${evalLua(L, `W:cardHeight(CARD)`)}`);
+
+  check("drawCard: sets the row height so rowAt can hit-test it",
+    evalLua(L, `ROW.height == W:cardHeight(CARD)`) === true, "");
+
+  check("drawCard: paints the task text",
+    evalLua(L, `(function()
+      for _, d in ipairs(DRAWN) do
+        if d.kind == "text" and d.text == CARD.task then return true end
+      end
+      return false
+    end)()`) === true, "");
+
+  // A ladder, not a bar: target 3 is countable, so three cells are drawn.
+  check("drawCard: draws one ladder cell per required unit",
+    evalLua(L, `(function()
+      local n = 0
+      for _, d in ipairs(DRAWN) do
+        if d.kind == "border" and d.h == 7 then n = n + 1 end
+      end
+      return n
+    end)()`) === 3, "");
+
+  // Closed card must not leak its checks onto the panel.
+  check("drawCard: a shut card draws none of its checks",
+    evalLua(L, `(function()
+      for _, d in ipairs(DRAWN) do
+        if d.kind == "text" and d.text == "a" then return false end
+      end
+      return true
+    end)()`) === true, "");
+
+  runLua(L, `
+    CARD.expanded = true
+    DRAWN = {}
+    W:drawCard(0, ROW, false)
+  `, "drawCardOpen");
+
+  check("drawCard: an open card draws every check label",
+    evalLua(L, `(function()
+      local seen = {}
+      for _, d in ipairs(DRAWN) do
+        if d.kind == "text" then seen[d.text] = true end
+      end
+      return seen["a"] and seen["c"] and seen["e"]
+    end)()`) === true, "");
+
+  // Above LADDER_MAX a ladder stops being countable, so the card must switch
+  // to a continuous bar rather than drawing thirty unreadable cells.
+  runLua(L, `
+    HOLD = { task = "hold the herd", context = "L4", state = "locked",
+             done = 0, target = 30, checks = {}, expanded = false }
+    DRAWN = {}
+    W:drawCard(0, { text = "x", item = HOLD, height = W:cardHeight(HOLD) }, false)
+  `, "drawCardHold");
+
+  check("drawCard: a 30-night target draws one bar, not thirty cells",
+    evalLua(L, `(function()
+      local n = 0
+      for _, d in ipairs(DRAWN) do
+        if d.kind == "border" and d.h == 7 then n = n + 1 end
+      end
+      return n
+    end)()`) === 1, "");
+}
+
+// ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
 let failed = 0;

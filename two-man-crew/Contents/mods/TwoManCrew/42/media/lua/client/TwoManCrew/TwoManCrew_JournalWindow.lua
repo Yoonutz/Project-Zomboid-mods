@@ -467,6 +467,140 @@ end
 -- stages from GOALS.md, each marked done/current/unknown from whatever the
 -- server sent. Every field read is optional - a bare-bones or absent Tiers
 -- module still produces a readable (if sparse) list rather than an error.
+-- Spine and task colour, by card state.
+local STATE_COLOUR = {
+	active  = SKIN.active,
+	done    = SKIN.done,
+	blocked = SKIN.blocked,
+	locked  = SKIN.faint,
+}
+
+-- The three marks. Kept as plain characters rather than glyphs, because the
+-- game's bitmap fonts do not carry a tick and a missing glyph draws as nothing
+-- at all - an invisible mark is worse than a plain one.
+local MARK_GLYPH = { yes = "+", no = "x", unknown = "?" }
+local MARK_COLOUR = { yes = SKIN.done, no = SKIN.blocked, unknown = SKIN.unread }
+
+-- How tall a card is, open or shut.
+--
+-- Single owner of card geometry. drawCard calls this rather than recomputing,
+-- so the drawing and the hit-testing can never disagree about where a card
+-- ends - a disagreement would put the click on the wrong card.
+function TwoManCrewJournalWindow:cardHeight(card)
+	local lineH = getTextManager():getFontHeight(UIFont.NewSmall)
+	local h = lineH + 4 + LADDER_H + 3 + 2
+	if card.context then h = h + lineH end
+	if card.expanded then
+		h = h + #(card.checks or {}) * CHECK_ROW_H
+	end
+	return h
+end
+
+-- Draws one card, and its checks when it is open. Returns the y of the next
+-- row, and stamps item.height so rowAt() can hit-test a tall card - the same
+-- contract vanilla's recipe list uses (ISRecipeScrollingListBox.lua:191).
+--
+-- The alpha positions below differ between the two calls and that is not a
+-- typo: drawRect takes alpha BEFORE the rgb triplet (ISUIElement.lua:1191),
+-- drawText takes it LAST (ISUIElement.lua:1293).
+function TwoManCrewJournalWindow:drawCard(y, item, alt)
+	local card = item and item.item
+	if not card then
+		return y + ((item and item.height) or self.list.itemheight or 20)
+	end
+
+	local lineH = getTextManager():getFontHeight(UIFont.NewSmall)
+	local height = self:cardHeight(card)
+	local top = y
+	local x = CARD_PAD + SPINE_W + 5
+	local w = self.list and self.list:getWidth() or self.width
+
+	-- Body. Alternating rows separate adjacent cards without a heavy rule.
+	local bg = alt and SKIN.panel or SKIN.ground
+	self:drawRect(0, y, w, height, 1, bg.r, bg.g, bg.b)
+
+	local state = STATE_COLOUR[card.state] or SKIN.faint
+
+	-- The spine: state as colour, read before a word is parsed.
+	self:drawRect(CARD_PAD, y + 2, SPINE_W, height - 4, 1, state.r, state.g, state.b)
+
+	-- Chevron, task, count.
+	self:drawText(card.expanded and "v" or ">", x, y + 2,
+		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+
+	local taskColour = SKIN.text
+	if card.state == "locked" or card.state == "done" then taskColour = SKIN.dim end
+	self:drawText(card.task, x + 12, y + 2,
+		taskColour.r, taskColour.g, taskColour.b, 1, UIFont.NewSmall)
+
+	local count = "locked"
+	if card.state ~= "locked" then
+		count = tostring(card.done or 0) .. " / " .. tostring(card.target or 0)
+	end
+	local cw = getTextManager():MeasureStringX(UIFont.NewSmall, count)
+	self:drawText(count, w - CARD_PAD - cw, y + 2,
+		SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+
+	y = y + lineH + 4
+
+	-- Progress. A ladder while the target is small enough to count, a
+	-- continuous bar once it is not - see LADDER_MAX.
+	local barW = w - x - CARD_PAD
+	local target = card.target or 0
+	local done = card.done or 0
+
+	if target > 0 and target <= LADDER_MAX then
+		local gap = 2
+		local cellW = (barW - (target - 1) * gap) / target
+		for i = 1, target do
+			local cx = x + (i - 1) * (cellW + gap)
+			local c = (i <= done) and SKIN.done or SKIN.ground
+			self:drawRect(cx, y, cellW, LADDER_H, 1, c.r, c.g, c.b)
+			self:drawRectBorder(cx, y, cellW, LADDER_H, 1,
+				SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
+		end
+	else
+		self:drawRect(x, y, barW, LADDER_H, 1, SKIN.ground.r, SKIN.ground.g, SKIN.ground.b)
+		if target > 0 and done > 0 then
+			self:drawRect(x, y, barW * (done / target), LADDER_H, 1,
+				SKIN.active.r, SKIN.active.g, SKIN.active.b)
+		end
+		self:drawRectBorder(x, y, barW, LADDER_H, 1,
+			SKIN.ruleLit.r, SKIN.ruleLit.g, SKIN.ruleLit.b)
+	end
+	y = y + LADDER_H + 3
+
+	-- Context, so the ladder is never anonymous.
+	if card.context then
+		self:drawText(card.context, x, y,
+			SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+		y = y + lineH
+	end
+
+	-- The checks, only while the card is open.
+	if card.expanded then
+		for _, chk in ipairs(card.checks or {}) do
+			local mc = MARK_COLOUR[chk.mark] or SKIN.dim
+			self:drawText(MARK_GLYPH[chk.mark] or "?", x + 8, y,
+				mc.r, mc.g, mc.b, 1, UIFont.NewSmall)
+			self:drawText(chk.label, x + 22, y,
+				SKIN.dim.r, SKIN.dim.g, SKIN.dim.b, 1, UIFont.NewSmall)
+			if chk.why then
+				local ww = getTextManager():MeasureStringX(UIFont.NewSmall, chk.why)
+				self:drawText(chk.why, w - CARD_PAD - ww, y,
+					SKIN.faint.r, SKIN.faint.g, SKIN.faint.b, 1, UIFont.NewSmall)
+			end
+			y = y + CHECK_ROW_H
+		end
+	end
+
+	-- Bottom rule.
+	self:drawRect(0, top + height - 1, w, 1, 1, SKIN.rule.r, SKIN.rule.g, SKIN.rule.b)
+
+	item.height = height
+	return top + height
+end
+
 -- Turns the two server payloads the client already holds into task cards.
 --
 -- Pure by design: no getCell, no getPlayer, no drawing, no engine global at
