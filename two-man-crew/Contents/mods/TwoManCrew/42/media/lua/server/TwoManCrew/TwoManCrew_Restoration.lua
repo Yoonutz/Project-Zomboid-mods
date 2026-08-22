@@ -307,30 +307,54 @@ function TwoManCrew.Server.checkBuildingRestored(buildingEntry)
 		return false, { status = "unknown", reason = "building not found at claimed coords" }
 	end
 
+	-- Crew presence is tested BEFORE the square walk, not after it.
+	--
+	-- This ordering is the fix for the claim button freezing the game. The
+	-- square walk below enumerates every tile of every ground-floor room, and
+	-- calls getObjects()/getStaticMovingObjects() on each loaded one. Run over
+	-- a whole claim (dozens of rooms, thousands of tiles) inside a single
+	-- frame, on the main thread, that stops the game long enough to look like
+	-- a crash - which is exactly how it was reported, with the log ending
+	-- mid-frame on the claim press and no exception anywhere.
+	--
+	-- Crew presence is a hard precondition: checkBuildingSquares' verdict can
+	-- only ever become "restored" when someone stands within CREW_RADIUS (12
+	-- tiles). A building nobody is near cannot pass however the walk turns
+	-- out, so walking it is pure waste. Testing presence first is a distance
+	-- comparison per player - a couple of arithmetic ops - and it skips the
+	-- walk for every building except the one or two a crew member is actually
+	-- standing at. Same verdicts, bounded cost.
+	local crewPresent = crewPresentNear(buildingEntry.x, buildingEntry.y)
+
+	if not crewPresent then
+		-- Held at unknown rather than failed, so walking back to the
+		-- building can still complete it. This is the verdict the
+		-- post-walk "nobody here" branch used to produce; no square walk
+		-- is needed to reach it.
+		return false, {
+			status = "unknown",
+			crewPresent = false,
+			reason = "nobody here - stand inside it",
+		}
+	end
+
 	local status, detail = checkBuildingSquares(def)
 
 	if status == "unknown" then
 		detail.status = "unknown"
+		detail.crewPresent = true
 		return false, detail
 	end
 
-	-- Crew presence: a building only counts while someone is there to see it.
-	local crewPresent = crewPresentNear(buildingEntry.x, buildingEntry.y)
 	detail.crewPresent = crewPresent
 
-	if status == "candidate_restored" and crewPresent then
+	-- crewPresent is necessarily true here: the absent case returned above,
+	-- before the walk. The "otherwise finished but nobody home" verdict it
+	-- used to produce is now the early return, with the same status and the
+	-- same reason string, so the client's rendering is unchanged.
+	if status == "candidate_restored" then
 		detail.status = "restored"
 		return true, detail
-	end
-
-	if status == "candidate_restored" and not crewPresent then
-		-- Windows, doors and corpses all pass, but nobody is there. Hold at
-		-- unknown rather than failing a building that is otherwise finished -
-		-- walking back to it must be able to complete it.
-		detail.status = "unknown"
-		-- Short on purpose: the client renders this on the building's own row.
-		detail.reason = "nobody here - stand inside it"
-		return false, detail
 	end
 
 	detail.status = "not_restored"
@@ -429,7 +453,19 @@ function TwoManCrew.Server.getClaimDetail()
 			row.status = "restored"
 			row.alreadyDone = true
 		else
-			local _, detail = TwoManCrew.Server.checkBuildingRestored(entry)
+			local restored, detail = TwoManCrew.Server.checkBuildingRestored(entry)
+
+			-- Bank a pass as it is found. This used to be recheckClaim's job
+			-- alone, which meant the caller had to walk the whole claim a
+			-- second time just to record what this walk already proved.
+			-- Same rule as recheckClaim: only ever sets true, never clears.
+			if restored and not claim.restored[entry.id] then
+				claim.restored[entry.id] = true
+				TwoManCrew.Server.addJournal(
+					"restored a building (" .. entry.units .. " work units)"
+				)
+			end
+
 			row.alreadyDone = false
 			row.status = detail.status or "unknown"
 			row.windowsOk = detail.windowsOk
@@ -467,9 +503,16 @@ local function OnClientCommand(module, command, player, args)
 	end
 
 	if command == "requestClaimDetail" then
-		-- Rescan first, so the detail shown is current rather than a snapshot
-		-- of whenever the last tick ran.
-		TwoManCrew.Server.recheckClaim()
+		-- No recheckClaim() call here. It used to run first "so the detail is
+		-- current", but getClaimDetail() below already calls
+		-- checkBuildingRestored on every unbanked building - so the whole
+		-- claim was being walked TWICE per journal open, for one set of
+		-- results. The detail is current either way, because the walk that
+		-- produces it happens inside getClaimDetail().
+		--
+		-- Banking (marking a passing building restored) is what recheckClaim
+		-- adds, and getClaimDetail now does that itself as it goes, so
+		-- opening the journal still records progress.
 		local claim = TwoManCrew.Server.getClaim()
 
 		TwoManCrew.replyToPlayer(player, "claimDetail", {
