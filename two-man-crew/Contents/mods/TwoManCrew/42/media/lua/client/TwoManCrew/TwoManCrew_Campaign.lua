@@ -44,9 +44,22 @@ local function onServerCommand(module, command, args)
 	if not player or not args then return end
 
 	if not args.ok then
-		HaloTextHelper.addBadText(player, "No claim: " .. tostring(args.reason))
+		local reason = tostring(args.reason)
+		HaloTextHelper.addBadText(player, "No claim: " .. reason)
+
+		-- Halo text floats up and fades in a couple of seconds, straight into
+		-- whatever the player was looking at. That is fine for a success, but
+		-- a refusal is the one message that has to survive being missed - the
+		-- reported symptom was "it only says surveying and that's it", which
+		-- is exactly what a fading refusal looks like. Say() puts it in the
+		-- chat log where it can be re-read, and the journal window picks up
+		-- the same reason on its next repaint.
+		player:Say("No claim here - " .. reason)
+		TwoManCrew.Client.lastClaimRefusal = reason
 		return
 	end
+
+	TwoManCrew.Client.lastClaimRefusal = nil
 
 	TwoManCrew.Client.claimSummary = {
 		count = args.count,

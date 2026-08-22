@@ -27,6 +27,12 @@ local DEFAULTS = {
 	showTally = true,
 	showJournal = true,
 	locked = false,
+	-- When false (the default) the widget is just its badge until the mouse
+	-- is over it. The panel used to be a permanent dark rectangle sitting on
+	-- the HUD; collapsing it to the icon is what stops it reading as a debug
+	-- overlay. Players who would rather keep the text on screen at all times
+	-- set this from the right-click menu.
+	alwaysExpanded = false,
 }
 
 -- Scale steps offered in the right-click menu. Kept coarse: a slider in a

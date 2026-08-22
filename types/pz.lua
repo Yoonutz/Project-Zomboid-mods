@@ -83,6 +83,13 @@ function getCore() end
 ---@return any
 function getTexture(path) end
 
+--- Text metrics. `getTextManager():MeasureStringX(font, text)` returns the
+--- pixel width a string will occupy in that font, which is what right-aligned
+--- and centred UI text is positioned from.
+--- Verified: client/Chat/ISChat.lua:422, client/DebugUIs/AnimationClipViewer.lua:63.
+---@return any
+function getTextManager() end
+
 --- True on a game client, including a listen-server host's client half.
 ---@return boolean
 function isClient() end

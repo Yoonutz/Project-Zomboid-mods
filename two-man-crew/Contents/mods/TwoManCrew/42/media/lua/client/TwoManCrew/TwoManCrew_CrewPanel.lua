@@ -5,6 +5,14 @@
 -- the right instinct even though a real moodle is impossible (the MoodleType
 -- list is fixed in Java - mods cannot add an eleventh entry).
 --
+-- Shape: a badge, not a box. Collapsed, the widget is the crew icon and a
+-- small status dot, drawn straight on the HUD with no background - which is
+-- how vanilla's own always-on indicators read. The dark rectangle it used to
+-- paint made it look like a debug overlay bolted onto the game. Hovering
+-- expands it to the full text, and the panel paints its backing plate only
+-- while expanded, so the box exists exactly as long as there is text needing
+-- one and not a frame longer.
+--
 -- Lifecycle copied from the smallest vanilla floating element, ISAlert
 -- (client/Chat/ISAlert.lua): derive ISUIElement, :new, :initialise,
 -- :addToUIManager, :setVisible, created on Events.OnGameStart.
@@ -14,8 +22,13 @@
 --     - client/Fishing/FishingDebugWindow.lua:64
 --   self:drawRect(x, y, w, h, a, r, g, b)   <- alpha FIRST
 --     - client/Fishing/TensionUI.lua:66
+--   self:drawTextureScaled(tex, x, y, w, h, a, r, g, b)  <- alpha FIRST
+--     - client/ISUI/ISUIElement.lua:1032
+--   self:isMouseOver()  Java-backed, client/ISUI/ISUIElement.lua:414
 --   getCore():getScreenWidth() / getScreenHeight()
 --     - client/Chat/ISAlert.lua:33-34
+--   getTextManager():MeasureStringX(font, text)
+--     - client/ISUI/ISToolTip.lua, used to size the expanded plate to its text
 
 require "ISUI/ISUIElement"
 require "TwoManCrew/TwoManCrew_Config"
@@ -26,6 +39,11 @@ TwoManCrewPanel = ISUIElement:derive("TwoManCrewPanel")
 local PAD = 6
 local LINE = 16
 local WIDTH = 190
+
+-- Size of the badge when the widget is collapsed to just its icon. Bigger
+-- than the 16px title-bar variant, because collapsed it is the only thing
+-- on screen carrying the mod's state and it has to survive a glance.
+local BADGE = 22
 
 -- Refresh cadence. The panel renders every frame, but it only recomputes
 -- partner state on this interval - render must stay cheap.
@@ -46,6 +64,11 @@ function TwoManCrewPanel:new(x, y, width, height)
 	o.pressed = false
 	o.canDrag = false
 	o.dragMoved = false
+	-- True while the widget is showing its full text rather than just the
+	-- badge. Driven by hover in prerender, forced on by the alwaysExpanded
+	-- preference, and forced on while a drag is in progress so the thing
+	-- being dragged does not change size under the cursor.
+	o.expanded = false
 	---@type table<string, number>|nil
 	o.tally = nil
 	--- Newest journal entry from the server's crewReport reply, or nil before
@@ -53,12 +76,14 @@ function TwoManCrewPanel:new(x, y, width, height)
 	---@type { text: string, playerName: string, worldAgeHours: number }|nil
 	o.lastJournal = nil
 
-	-- Crew badge drawn on the header row, left of the "CREW" label. Loaded
-	-- once here rather than per frame, and nil-safe: getTexture returns nil
-	-- for a missing file and prerender skips the draw, so a packaging mistake
-	-- costs the badge and not the widget. Same art and same media/ui path as
-	-- the journal title bar, so the two surfaces read as one mod.
-	o.badge = getTexture("media/ui/TwoManCrew_Journal_16.png")
+	-- Crew badge. Loaded once here rather than per frame, and nil-safe:
+	-- getTexture returns nil for a missing file and every draw below skips on
+	-- nil, so a packaging mistake costs the badge and not the widget.
+	--
+	-- This is the mod's own two-hard-hats art rather than the journal book:
+	-- the book belongs to the journal window's title bar, and the widget is
+	-- about the crew, so they are deliberately different icons from one set.
+	o.badge = getTexture("media/ui/TwoManCrew_Crew.png")
 
 	TwoManCrewPanel.instance = o
 	return o
@@ -98,29 +123,40 @@ function TwoManCrewPanel:pullCachedReport()
 	self.lastJournal = report.journal and report.journal[#report.journal] or nil
 end
 
-function TwoManCrewPanel:prerender()
-	self.refreshTimer = self.refreshTimer - UIManager.getMillisSinceLastRender()
-	if self.refreshTimer <= 0 then
-		self.refreshTimer = REFRESH_MS
-		self:refresh()
-		self:pullCachedReport()
+-- Collapsed: the badge plus a status dot, no plate, no text. The dot is the
+-- whole status read at a glance - green means the partner is beside you, grey
+-- means working alone - so it is drawn last and sits proud of the badge's
+-- bottom-right corner rather than inside it.
+function TwoManCrewPanel:renderCollapsed(scale)
+	local size = math.floor(BADGE * scale)
+
+	if self.badge then
+		self:drawTextureScaled(self.badge, 0, 0, size, size, 1, 1, 1, 1)
+	else
+		-- No texture: fall back to a readable label rather than an empty
+		-- widget the player cannot find or click.
+		self:drawText("CREW", 0, 0, 0.85, 0.85, 0.85, 1, UIFont.Small)
 	end
 
-	-- Scale multiplies the row height and padding so the whole widget grows,
-	-- rather than only the box. Font stays vanilla-sized: PZ exposes a fixed
-	-- set of UIFont values, so text cannot scale continuously.
-	local scale = self.scale or 1.0
-	local pad = math.floor(PAD * scale)
-	local line = math.floor(LINE * scale)
+	local dot = math.max(4, math.floor(6 * scale))
+	local dx = size - dot
+	local dy = size - dot
 
-	local showTally = self.showTally ~= false and self.tally ~= nil
-	local showJournal = self.showJournal ~= false and self.lastJournal ~= nil
+	-- Dark ring first, coloured dot inside it, so the indicator stays legible
+	-- against both a bright road and a dark interior. Two rects is cheaper
+	-- than shipping another texture for a six-pixel dot.
+	self:drawRect(dx - 1, dy - 1, dot + 2, dot + 2, 0.85, 0.05, 0.04, 0.03)
+	if self.partnerName then
+		self:drawRect(dx, dy, dot, dot, 1, 0.43, 0.69, 0.37)
+	else
+		self:drawRect(dx, dy, dot, dot, 1, 0.45, 0.45, 0.45)
+	end
+end
 
-	local lines = 2
-	if showTally then lines = lines + 1 end
-	if showJournal then lines = lines + 1 end
-	self.height = pad * 2 + line * lines
-
+-- Expanded: the badge on the header row and the full status text, over a
+-- backing plate. The plate is drawn here and only here, which is what keeps
+-- the collapsed widget free of the box the player asked to be rid of.
+function TwoManCrewPanel:renderExpanded(scale, pad, line)
 	self:drawRect(0, 0, self.width, self.height, 0.55, 0.0, 0.0, 0.0)
 
 	local y = pad
@@ -129,8 +165,6 @@ function TwoManCrewPanel:prerender()
 	-- stays one piece at every size. The label shifts right by the badge width
 	-- only when the badge actually drew; a missing texture leaves the original
 	-- flush-left layout rather than an empty gap.
-	-- drawTextureScaled(texture, x, y, w, h, a, r, g, b) - alpha FIRST,
-	-- verified at client/ISUI/ISUIElement.lua:1032.
 	local labelX = pad
 	if self.badge then
 		local badgeSize = line - 2
@@ -150,7 +184,7 @@ function TwoManCrewPanel:prerender()
 	end
 	y = y + line
 
-	if showTally then
+	if self.showTally ~= false and self.tally then
 		local total = 0
 		for _, n in pairs(self.tally) do
 			total = total + n
@@ -159,17 +193,55 @@ function TwoManCrewPanel:prerender()
 		y = y + line
 	end
 
-	-- Read the entry into a local before touching its fields. showJournal
-	-- already implies lastJournal is non-nil, but going through the local
-	-- keeps that guarantee visible at the point of use instead of two lines
-	-- above, and drops the two remaining analyser warnings on this file.
+	-- Read the entry into a local before touching its fields, so the non-nil
+	-- guarantee is visible at the point of use rather than several lines above.
 	local entry = self.lastJournal
-	if showJournal and entry and entry.text then
+	if self.showJournal ~= false and entry and entry.text then
 		local text = entry.text
 		-- Wider panel fits more text, so the truncation point follows scale.
 		local maxChars = math.floor(28 * scale)
 		if #text > maxChars then text = string.sub(text, 1, maxChars - 1) .. "..." end
 		self:drawText(text, pad, y, 0.65, 0.65, 0.6, 1, UIFont.Small)
+	end
+end
+
+function TwoManCrewPanel:prerender()
+	self.refreshTimer = self.refreshTimer - UIManager.getMillisSinceLastRender()
+	if self.refreshTimer <= 0 then
+		self.refreshTimer = REFRESH_MS
+		self:refresh()
+		self:pullCachedReport()
+	end
+
+	-- Scale multiplies the row height and padding so the whole widget grows,
+	-- rather than only the box. Font stays vanilla-sized: PZ exposes a fixed
+	-- set of UIFont values, so text cannot scale continuously.
+	local scale = self.scale or 1.0
+	local pad = math.floor(PAD * scale)
+	local line = math.floor(LINE * scale)
+
+	-- Expand on hover, and stay expanded through a drag so the widget does
+	-- not shrink out from under the cursor mid-move. isMouseOver() is the
+	-- Java-backed base implementation and is only meaningful once the element
+	-- has a javaObject, which it has by the time prerender runs.
+	self.expanded = self.alwaysExpanded == true or self.pressed or self:isMouseOver()
+
+	if self.expanded then
+		local lines = 2
+		if self.showTally ~= false and self.tally then lines = lines + 1 end
+		if self.showJournal ~= false and self.lastJournal then lines = lines + 1 end
+
+		self.width = math.floor(WIDTH * scale)
+		self.height = pad * 2 + line * lines
+		self:renderExpanded(scale, pad, line)
+	else
+		-- Collapsed the element shrinks to the badge, so the clickable area
+		-- matches what is actually drawn. Leaving it full width would keep an
+		-- invisible rectangle swallowing clicks meant for the game world.
+		local size = math.floor(BADGE * scale)
+		self.width = size
+		self.height = size
+		self:renderCollapsed(scale)
 	end
 end
 
@@ -192,7 +264,9 @@ end
 -- isMouseOver is intentionally NOT overridden: the base ISUIElement version
 -- (ISUIElement.lua:414, self.javaObject:isMouseOver()) is Java-backed and
 -- already correct. A prior override here read self.mouseOver, a field this
--- file never set, which would have always returned nil/false.
+-- file never set, which would have always returned nil/false. The hover
+-- expand in prerender depends on that base version being the real one.
+--
 -- Left click either drags the panel or opens the journal. Which one is decided
 -- on mouse-up: if the pointer moved while held, it was a drag, otherwise it was
 -- a click. That avoids a modifier key and avoids opening the journal every time
@@ -226,12 +300,16 @@ end
 function TwoManCrewPanel:onMouseUp(x, y)
 	if self.pressed and self.dragMoved then
 		-- Drag finished: persist where it landed, clamped back on screen so a
-		-- panel dragged off the edge is not lost on next login.
+		-- panel dragged off the edge is not lost on next login. Clamped against
+		-- the COLLAPSED size, because that is what the widget shrinks back to
+		-- the moment the cursor leaves - clamping to the expanded width would
+		-- let the resting badge sit further off-screen than it should.
 		local player = getPlayer()
 		local prefs = TwoManCrew.Prefs.get(player)
+		local badge = math.floor(BADGE * (self.scale or 1.0))
 		prefs.x = self:getX()
 		prefs.y = self:getY()
-		TwoManCrew.Prefs.clampToScreen(prefs, self.width, self.height)
+		TwoManCrew.Prefs.clampToScreen(prefs, badge, badge)
 		self:setX(prefs.x)
 		self:setY(prefs.y)
 	elseif self.pressed and TwoManCrewJournalWindow and TwoManCrewJournalWindow.toggle then
@@ -275,6 +353,9 @@ function TwoManCrewPanel:onRightMouseDown(x, y)
 		end
 	end
 
+	local expandOpt = context:addOption("Always show text", self, TwoManCrewPanel.onToggle, "alwaysExpanded")
+	context:setOptionChecked(expandOpt, prefs.alwaysExpanded)
+
 	local tallyOpt = context:addOption("Show crew deeds", self, TwoManCrewPanel.onToggle, "showTally")
 	context:setOptionChecked(tallyOpt, prefs.showTally)
 
@@ -308,15 +389,17 @@ end
 
 -- Pushes saved preferences onto the live element. Called on setup and after any
 -- menu change, so the panel reflects a choice immediately.
+--
+-- Width is NOT set here any more: prerender owns it, because it differs
+-- between the collapsed badge and the expanded plate and changes on hover.
+-- Setting it here too would have the two fight for a frame on every toggle.
 function TwoManCrewPanel:applyPrefs()
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
 
 	self.scale = prefs.scale
 	self.showTally = prefs.showTally
 	self.showJournal = prefs.showJournal
-
-	self.width = math.floor(WIDTH * self.scale)
-	self:setWidth(self.width)
+	self.alwaysExpanded = prefs.alwaysExpanded
 end
 
 TwoManCrewPanel.setup = function()
@@ -325,11 +408,10 @@ TwoManCrewPanel.setup = function()
 	-- Restore where the player last left it. Defaults put it top-left under the
 	-- vanilla HUD, clear of the moodle stack on the right.
 	local prefs = TwoManCrew.Prefs.get(getPlayer())
-	local startWidth = math.floor(WIDTH * (prefs.scale or 1.0))
-	local startHeight = PAD * 2 + LINE * 2
-	TwoManCrew.Prefs.clampToScreen(prefs, startWidth, startHeight)
+	local badge = math.floor(BADGE * (prefs.scale or 1.0))
+	TwoManCrew.Prefs.clampToScreen(prefs, badge, badge)
 
-	local panel = TwoManCrewPanel:new(prefs.x, prefs.y, startWidth, startHeight)
+	local panel = TwoManCrewPanel:new(prefs.x, prefs.y, badge, badge)
 	panel:initialise()
 	panel:addToUIManager()
 	panel:setVisible(true)
