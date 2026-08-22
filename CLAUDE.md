@@ -64,6 +64,25 @@
   (`git archive <commit> two-man-crew/Contents/mods/TwoManCrew`) and copy
   from there — never `git checkout` an old version over the working tree.
 
+## Skills
+
+The global superpowers catalog in `~/.claude/CLAUDE.md` applies here as written.
+Invoking a matching skill is mandatory, not advisory. Two that carry weight in
+this repo:
+
+- `superpowers:test-driven-development` — required **before** writing any test,
+  probe, benchmark, or instrumented copy of a source file. No skill invocation
+  means no test: make the fix and verify by diff instead. Tests improvised
+  after the fact cannot fail, so they prove nothing. Running the checks this
+  repo already has (`npm run check`, `npm test` in `two-man-crew/`) is not
+  authoring a test; adding cases to `test-ui.mjs` is.
+- `superpowers:verification-before-completion` — invoked in the closing turn of
+  any delivered work, alongside the `- [x]` evidence checklist.
+
+Nothing in this repo can be verified by running the game, so anything needing a
+live load is reported unverified rather than propped up with scaffolding built
+to manufacture proof.
+
 ## Project memory
 
 This repo's memories live in `.claude/memory/`, indexed by `.claude/memory/MEMORY.md`,
