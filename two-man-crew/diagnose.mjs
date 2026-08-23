@@ -33,7 +33,7 @@ const loadedMod = lines.some((l) => /loading TwoManCrew/i.test(l));
 
 // Any Lua error mentioning the mod, or a stack frame from one of its files.
 const errors = lines.filter(
-  (l) => /TwoManCrew/i.test(l) && /ERROR|Exception|attempt to/i.test(l)
+  (l) => /TwoManCrew/i.test(l) && /ERROR|Exception|attempt to/i.test(l),
 );
 
 console.log(`log:  ${f}`);
@@ -50,21 +50,36 @@ if (mine.length === 0) {
 } else {
   const say = (label, re) => {
     const hit = mine.filter((l) => re.test(l));
-    console.log(`${hit.length ? "yes" : "NO "}  ${label}${hit.length > 1 ? `  (x${hit.length})` : ""}`);
+    console.log(
+      `${hit.length ? "yes" : "NO "}  ${label}${hit.length > 1 ? `  (x${hit.length})` : ""}`,
+    );
     return hit.length > 0;
   };
 
   console.log("Chain, in order - the first NO is where it breaks:");
-  const campaignLoaded = say("server claim handler registered", /Campaign\.lua LOADED/);
-  const reportLoaded = say("server refresh handler registered", /CrewReport\.lua LOADED/);
+  const campaignLoaded = say(
+    "server claim handler registered",
+    /Campaign\.lua LOADED/,
+  );
+  const reportLoaded = say(
+    "server refresh handler registered",
+    /CrewReport\.lua LOADED/,
+  );
   const sentClaim = say("client sent a claim request", /sending requestClaim/);
-  const sentReport = say("client sent a refresh request", /sending requestCrewReport/);
-  const gotAny = say("server received any command", /got command|CrewReport got/);
+  const sentReport = say(
+    "client sent a refresh request",
+    /sending requestCrewReport/,
+  );
+  const gotAny = say(
+    "server received any command",
+    /got command|CrewReport got/,
+  );
   const replied = say("client received a reply", /server replied/);
 
   console.log("");
   const guard = mine.find((l) => /reached guard/.test(l));
-  if (guard) console.log(`guard values: ${guard.slice(guard.indexOf("isClient="))}`);
+  if (guard)
+    console.log(`guard values: ${guard.slice(guard.indexOf("isClient="))}`);
 
   console.log("");
   if (!campaignLoaded || !reportLoaded) {
@@ -88,5 +103,42 @@ if (mine.length === 0) {
 if (errors.length) {
   console.log("");
   console.log("Errors mentioning the mod:");
-  for (const e of errors.slice(0, 10)) console.log("  " + e.trim().slice(0, 160));
+  for (const e of errors.slice(0, 10))
+    console.log("  " + e.trim().slice(0, 160));
+}
+
+// Probe output, added 2026-08-23. TwoManCrew_Probe.lua prints one
+// "TwoManCrew[probe] fact = value" line per read. This groups them by fact and
+// shows the LAST value seen, because later passes happen with the crew in
+// different places and the last one is the most recent state of the world.
+const probeLines = lines.filter((l) => l.includes("TwoManCrew[probe]"));
+
+console.log("");
+if (probeLines.length === 0) {
+  console.log("No probe output in this log.");
+  console.log("");
+  console.log("Either this log predates the probe build, or the probe never");
+  console.log(
+    "ran. It fires on the game's ten-minute tick, so load a save and",
+  );
+  console.log("let roughly an in-game hour pass, then run this again.");
+} else {
+  const facts = new Map();
+  for (const line of probeLines) {
+    const match = line.match(/TwoManCrew\[probe\] (.+?) = (.*)$/);
+    if (!match) continue;
+    const [, fact, value] = match;
+    if (!facts.has(fact)) facts.set(fact, []);
+    facts.get(fact).push(value.trim());
+  }
+
+  console.log(`Probe facts (${probeLines.length} lines):`);
+  for (const [fact, values] of facts) {
+    const last = values[values.length - 1];
+    const varied =
+      new Set(values).size > 1
+        ? `  (varied across ${values.length} passes)`
+        : "";
+    console.log(`  ${fact} = ${last}${varied}`);
+  }
 }
