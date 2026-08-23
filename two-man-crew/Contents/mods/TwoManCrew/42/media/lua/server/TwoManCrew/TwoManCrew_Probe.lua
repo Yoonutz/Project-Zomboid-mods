@@ -73,6 +73,56 @@ local function probeLuaSystem(globalName, fieldNames)
 	end)
 end
 
+-- Probes the Java-side global object registry, which is where generators live.
+-- SGlobalObjects is NOT one of the Lua SGlobalObjectSystem registrations, and
+-- every call site in the installed tree is client-side debug tooling, so the
+-- first fact below is the one that decides whether a power track is possible
+-- at all.
+--
+-- These accessors are the RAW Java ones and are ZERO-based, unlike
+-- SGlobalObjectSystem:getLuaObjectByIndex, which subtracts one for you.
+local function probeRegistry()
+	try("SGlobalObjects.global", function()
+		return SGlobalObjects ~= nil
+	end)
+
+	try("SGlobalObjects.systemCount", function()
+		return SGlobalObjects.getSystemCount()
+	end)
+
+	try("SGlobalObjects.systemNames", function()
+		local names = {}
+		for i = 1, SGlobalObjects.getSystemCount() do
+			local system = SGlobalObjects.getSystemByIndex(i - 1)
+			names[#names + 1] = tostring(system:getName()) .. ":" .. tostring(system:getObjectCount())
+		end
+		if #names == 0 then return "none" end
+		return table.concat(names, ", ")
+	end)
+
+	-- Whether a generator's RUNNING state is readable off loaded ground is the
+	-- second unknown. getIsoObjectAt returns an IsoObject, which suggests it is
+	-- not, in which case position is map-wide but isActivated() is a presence
+	-- check. This reports position and state separately so the log can tell
+	-- those two apart instead of collapsing them.
+	try("SGlobalObjects.generator", function()
+		for i = 1, SGlobalObjects.getSystemCount() do
+			local system = SGlobalObjects.getSystemByIndex(i - 1)
+			for j = 1, system:getObjectCount() do
+				local globalObject = system:getObjectByIndex(j - 1)
+				local x, y, z = globalObject:getX(), globalObject:getY(), globalObject:getZ()
+				local isoObject = system:getModData():getIsoObjectAt(x, y, z)
+				if isoObject and instanceof(isoObject, "IsoGenerator") then
+					return "pos x=" .. tostring(x) .. " y=" .. tostring(y) .. " z=" .. tostring(z)
+						.. " activated=" .. tostring(isoObject:isActivated())
+						.. " fuel=" .. tostring(isoObject:getFuel())
+				end
+			end
+		end
+		return "no generator found in any system"
+	end)
+end
+
 local function runPass()
 	passes = passes + 1
 	say("pass", passes .. "/" .. MAX_PASSES)
@@ -85,6 +135,8 @@ local function runPass()
 	-- The "plow" state is not a crop: SFarmingSystem.lua:149 skips it, and so
 	-- must anything built on this.
 	probeLuaSystem("SFarmingSystem", { "state", "typeOfSeed", "health", "waterLvl", "exterior" })
+
+	probeRegistry()
 end
 
 local function onTenMinutes()
