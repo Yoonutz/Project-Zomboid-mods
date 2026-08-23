@@ -105,21 +105,33 @@ local function probeRegistry()
 	-- not, in which case position is map-wide but isActivated() is a presence
 	-- check. This reports position and state separately so the log can tell
 	-- those two apart instead of collapsing them.
+	--
+	-- Each object is inspected inside its OWN pcall. One bad object must not
+	-- abort the scan and turn a real generator into "none found" - a probe that
+	-- reports a false negative is worse than one that reports an error.
 	try("SGlobalObjects.generator", function()
+		local skipped = 0
 		for i = 1, SGlobalObjects.getSystemCount() do
 			local system = SGlobalObjects.getSystemByIndex(i - 1)
 			for j = 1, system:getObjectCount() do
-				local globalObject = system:getObjectByIndex(j - 1)
-				local x, y, z = globalObject:getX(), globalObject:getY(), globalObject:getZ()
-				local isoObject = system:getModData():getIsoObjectAt(x, y, z)
-				if isoObject and instanceof(isoObject, "IsoGenerator") then
-					return "pos x=" .. tostring(x) .. " y=" .. tostring(y) .. " z=" .. tostring(z)
-						.. " activated=" .. tostring(isoObject:isActivated())
-						.. " fuel=" .. tostring(isoObject:getFuel())
+				local ok, found = pcall(function()
+					local globalObject = system:getObjectByIndex(j - 1)
+					local x, y, z = globalObject:getX(), globalObject:getY(), globalObject:getZ()
+					local isoObject = system:getModData():getIsoObjectAt(x, y, z)
+					if isoObject and instanceof(isoObject, "IsoGenerator") then
+						return "pos x=" .. tostring(x) .. " y=" .. tostring(y) .. " z=" .. tostring(z)
+							.. " activated=" .. tostring(isoObject:isActivated())
+							.. " fuel=" .. tostring(isoObject:getFuel())
+					end
+					return nil
+				end)
+				if ok and found then
+					return found .. " (skipped " .. skipped .. " unreadable)"
 				end
+				if not ok then skipped = skipped + 1 end
 			end
 		end
-		return "no generator found in any system"
+		return "no generator found in any system (skipped " .. skipped .. " unreadable)"
 	end)
 end
 
