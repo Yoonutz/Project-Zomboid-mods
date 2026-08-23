@@ -39,9 +39,49 @@ local function try(fact, fn)
 	end
 end
 
+-- Probes one registered Lua global object system by name. Reports three
+-- separate facts rather than one, because they can fail independently: the
+-- global may be missing, the instance may be nil before the system starts,
+-- and the object list may simply be empty.
+local function probeLuaSystem(globalName, fieldNames)
+	try(globalName .. ".global", function()
+		return _G[globalName] ~= nil
+	end)
+
+	try(globalName .. ".instance", function()
+		return _G[globalName] ~= nil and _G[globalName].instance ~= nil
+	end)
+
+	try(globalName .. ".count", function()
+		return _G[globalName].instance:getLuaObjectCount()
+	end)
+
+	try(globalName .. ".first", function()
+		local system = _G[globalName].instance
+		if system:getLuaObjectCount() == 0 then return "none present" end
+
+		local o = system:getLuaObjectByIndex(0)
+		local parts = { "x=" .. tostring(o.x) .. " y=" .. tostring(o.y) .. " z=" .. tostring(o.z) }
+		for i = 1, #fieldNames do
+			local key = fieldNames[i]
+			parts[#parts + 1] = key .. "=" .. tostring(o[key])
+		end
+		return table.concat(parts, " ")
+	end)
+end
+
 local function runPass()
 	passes = passes + 1
 	say("pass", passes .. "/" .. MAX_PASSES)
+
+	-- Water. Fields verified in server/RainBarrel/SRainBarrelGlobalObject.lua,
+	-- set in initNew and stateFromIsoObject.
+	probeLuaSystem("SRainBarrelSystem", { "waterAmount", "waterMax", "exterior", "taintedWater" })
+
+	-- Crops. Fields verified in server/Farming/SFarmingSystem.lua:156,186,194,207.
+	-- The "plow" state is not a crop: SFarmingSystem.lua:149 skips it, and so
+	-- must anything built on this.
+	probeLuaSystem("SFarmingSystem", { "state", "typeOfSeed", "health", "waterLvl", "exterior" })
 end
 
 local function onTenMinutes()
