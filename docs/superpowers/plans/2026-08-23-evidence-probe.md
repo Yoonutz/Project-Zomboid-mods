@@ -266,7 +266,10 @@ local function probeLuaSystem(globalName, fieldNames)
 		local system = _G[globalName].instance
 		if system:getLuaObjectCount() == 0 then return "none present" end
 
-		local o = system:getLuaObjectByIndex(0)
+		-- ONE-based: getLuaObjectByIndex does getObjectByIndex(index-1)
+		-- internally (server/Map/SGlobalObjectSystem.lua:44), so index 1 is
+		-- the first object. Passing 0 asks Java for -1 and throws.
+		local o = system:getLuaObjectByIndex(1)
 		local parts = { "x=" .. tostring(o.x) .. " y=" .. tostring(o.y) .. " z=" .. tostring(o.z) }
 		for i = 1, #fieldNames do
 			local key = fieldNames[i]

@@ -38,6 +38,44 @@
 ---@type any
 SFeedingTroughSystem = nil
 
+--- Server-side global object system for rain barrels. Registered the same way
+--- the trough system is (server/RainBarrel/SRainBarrelSystem.lua:66), so it
+--- carries the same `.instance` singleton and the same
+--- getLuaObjectCount()/getLuaObjectByIndex(i) pair. Its Lua objects expose
+--- waterAmount, waterMax, exterior and taintedWater
+--- (server/RainBarrel/SRainBarrelGlobalObject.lua, initNew and
+--- stateFromIsoObject).
+---@type any
+SRainBarrelSystem = nil
+
+--- Server-side global object system for crops. Registered at
+--- server/Farming/SFarmingSystem.lua:580. Its Lua objects expose state,
+--- typeOfSeed, health, waterLvl and exterior, plus isAlive() and canHarvest()
+--- (server/Farming/SPlantGlobalObject.lua:123,201). A `state` of "plow" is a
+--- ploughed square, not a crop - vanilla skips it at SFarmingSystem.lua:149.
+---@type any
+SFarmingSystem = nil
+
+--- The Java-side global object registry, which is a different thing from the
+--- Lua SGlobalObjectSystem subclasses above. Accessors are STATIC (dot, not
+--- colon) and ZERO-based, unlike getLuaObjectByIndex which subtracts one for
+--- you. Vanilla calls it from server code, so it is reachable there:
+--- server/Map/SGlobalObjectSystem.lua:13,265,266. Whether generators appear in
+--- it, and whether their running state survives unloaded ground, is what
+--- TwoManCrew_Probe.lua exists to find out - so this stub records the shape
+--- only, never a claim that a given read works.
+---@type any
+SGlobalObjects = nil
+
+--- Engine enum of square/sprite flags, indexed by name. Used server-side by
+--- vanilla at server/BuildingObjects/ISBuildIsoEntity.lua:195,198 as
+--- `square:getProperties():has(IsoFlagType.WallN)` and friends. Declared `any`
+--- because the mod indexes it dynamically by a flag name held in a table, so a
+--- field-by-field stub would be a list this file has to keep in sync for no
+--- gain.
+---@type any
+IsoFlagType = nil
+
 --- Engine globals ---------------------------------------------------------
 
 --- Returns the local player (client only). Nil before a game is loaded.

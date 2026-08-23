@@ -266,10 +266,21 @@ instanceof(obj, "IsoGenerator")
   client/DebugUIs/DebugContextMenu.lua:415
 ```
 
-Two facts are unproven and must come from the probe, not from reasoning:
+**Correction, found while implementing the probe.** `SGlobalObjects` is NOT
+client-only. Vanilla uses it from a server file:
 
-1. Whether `SGlobalObjects` is reachable from a `server/` file at all. Every call
-   site found is client-side.
+```text
+SGlobalObjects.registerSystem(name)     server/Map/SGlobalObjectSystem.lua:13
+SGlobalObjects.getSystemCount()         server/Map/SGlobalObjectSystem.lua:265
+SGlobalObjects.getSystemByIndex(i-1)    server/Map/SGlobalObjectSystem.lua:266
+```
+
+Reachability from server code is therefore source-proven, not a hypothesis. Two
+facts remain unproven and must still come from the probe:
+
+1. Whether generators are actually registered in that registry, and under which
+   system name. Nothing in the Lua tree enumerates them; the debug UI only
+   inspects whatever it is handed.
 2. Whether a generator's running state is readable off loaded ground.
    `getIsoObjectAt` returns an `IsoObject`, which suggests it is not, in which
    case position is map-wide but `isActivated()` is a loaded-ground read.
