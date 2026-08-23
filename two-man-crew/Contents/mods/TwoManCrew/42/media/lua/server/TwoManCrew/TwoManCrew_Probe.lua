@@ -135,6 +135,82 @@ local function probeRegistry()
 	end)
 end
 
+-- Walks a short line of squares outward from a crew member and reports how far
+-- the loaded window actually extends, plus what the wall flags say on each
+-- square that IS loaded.
+--
+-- The distinction this exists to measure: a nil square is UNREADABLE, not
+-- wall-less. Any perimeter tier built on this must report unknown for a nil
+-- square and must never count it as a failure.
+local WALL_FLAGS = { "WallN", "WallW", "collideN", "collideW", "DoorWallN", "HoppableN" }
+local PERIMETER_SAMPLES = 40
+
+local function describeSquare(square)
+	if not square then return "nil (unloaded)" end
+
+	local props = square:getProperties()
+	if not props then return "loaded, no properties" end
+
+	local hits = {}
+	for i = 1, #WALL_FLAGS do
+		local flag = WALL_FLAGS[i]
+		if props:has(IsoFlagType[flag]) then
+			hits[#hits + 1] = flag
+		end
+	end
+
+	if #hits == 0 then return "loaded, no wall flags" end
+	return "loaded, " .. table.concat(hits, "+")
+end
+
+local function probePerimeter()
+	local players = TwoManCrew.getAllPlayers()
+	local player = players and players[1]
+
+	try("perimeter.anchor", function()
+		if not player then return "no player online" end
+		return "x=" .. tostring(math.floor(player:getX()))
+			.. " y=" .. tostring(math.floor(player:getY()))
+			.. " z=" .. tostring(math.floor(player:getZ()))
+	end)
+
+	if not player then return end
+
+	-- Coordinates are floored because getGridSquare indexes whole tiles, and a
+	-- player's position is a float mid-tile.
+	local px = math.floor(player:getX())
+	local py = math.floor(player:getY())
+	local pz = math.floor(player:getZ())
+
+	-- Report the furthest offset that still returns a square, and the flags
+	-- found along the way. One line per sample would flood the log, so this
+	-- summarises: how many were loaded, and the first three descriptions.
+	--
+	-- Each sample is inspected inside its OWN pcall. One square that throws
+	-- must not abort the walk and understate the reach.
+	try("perimeter.reach", function()
+		local loaded = 0
+		local errored = 0
+		local samples = {}
+		for step = 1, PERIMETER_SAMPLES do
+			local ok, description = pcall(function()
+				local square = getCell():getGridSquare(px + step, py, pz)
+				if square then loaded = loaded + 1 end
+				return describeSquare(square)
+			end)
+			if not ok then
+				errored = errored + 1
+				description = "threw"
+			end
+			if step <= 3 then
+				samples[#samples + 1] = "+" .. step .. ":" .. tostring(description)
+			end
+		end
+		return loaded .. "/" .. PERIMETER_SAMPLES .. " loaded eastward, "
+			.. errored .. " threw; " .. table.concat(samples, " | ")
+	end)
+end
+
 local function runPass()
 	passes = passes + 1
 	say("pass", passes .. "/" .. MAX_PASSES)
@@ -149,6 +225,7 @@ local function runPass()
 	probeLuaSystem("SFarmingSystem", { "state", "typeOfSeed", "health", "waterLvl", "exterior" })
 
 	probeRegistry()
+	probePerimeter()
 end
 
 local function onTenMinutes()
