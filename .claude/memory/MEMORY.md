@@ -3,7 +3,7 @@
 Project-local facts for this repo, stored in `.claude/memory/` and committed alongside the
 code, so a clone carries them. `CLAUDE.md` imports this index, which is what loads it.
 
-Cross-project facts live in `~/.claude/memories/` and are indexed by the global `MEMORY.md`;
+Cross-project facts live in `~/.claude/memory/` and are indexed by `~/.claude/memory/index.md`;
 both stores are consulted, never merged. An index line is a pointer — read the file before
 acting on its topic.
 
