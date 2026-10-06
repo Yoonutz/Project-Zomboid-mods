@@ -1,10 +1,10 @@
-# Lua event reference — verified subset
+# Lua event reference - verified subset
 
 Fetched 2026-08-13 from `https://demiurgequantified.github.io/ProjectZomboidLuaDocs/md_Events.html`
-(the actual current LuaDocs site — see `luadocs-wiki-note.md` for why the
+(the actual current LuaDocs site - see `luadocs-wiki-note.md` for why the
 PZwiki `LuaDocs` page itself is not the source of truth).
 
-This is not a full event dump — only what was looked up and confirmed for this
+This is not a full event dump - only what was looked up and confirmed for this
 workspace's scaffold. **Add to this file as more events get verified; don't
 add an event here from memory.**
 
@@ -12,14 +12,14 @@ add an event here from memory.**
 
 Fires in this order:
 
-1. **`OnGameBoot`** — triggered after the game finishes starting up. Fires
+1. **`OnGameBoot`** - triggered after the game finishes starting up. Fires
    before character loading on clients. No parameters.
-2. **`OnInitWorld`** — triggered after the world has initialised. No parameters.
-3. **`OnGameStart`** — triggered upon finishing loading and entering the game.
+2. **`OnInitWorld`** - triggered after the world has initialised. No parameters.
+3. **`OnGameStart`** - triggered upon finishing loading and entering the game.
    Client-side, marks when the player enters gameplay. No parameters.
-4. **`OnCreatePlayer`** — fires every time a local player loads into the
+4. **`OnCreatePlayer`** - fires every time a local player loads into the
    world. Parameters: `(int playerIndex, IsoPlayer player)`.
-5. **`OnNewGame`** — fires when a local player character is created for the
+5. **`OnNewGame`** - fires when a local player character is created for the
    first time (new character, not a load). Parameters: player character and
    spawn location.
 

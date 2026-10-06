@@ -5,12 +5,12 @@ Auto-loaded into every session via `CLAUDE.md`. Rules, not background.
 ## Build target
 
 Target Build 42 by default. Only add a `41/` folder for a mod if B41 support is
-explicitly needed — B41 and B42 item/recipe script syntax are not compatible
+explicitly needed - B41 and B42 item/recipe script syntax are not compatible
 (`Type=` vs `ItemType=`, old `recipe{}` vs `craftRecipe{}`).
 
 ## New mods
 
-Copy `_template/`, don't hand-build the folder tree — it already matches the Steam
+Copy `_template/`, don't hand-build the folder tree - it already matches the Steam
 Workshop packaging layout (`workshop.txt` + `Contents/mods/<ModID>/{common,41,42}/`).
 
 ## Verify APIs before using them
@@ -20,14 +20,14 @@ Before using any Lua function, event, or item/script property not already cited 
 
 - `docs/pz-modding-guide/`
 - `docs/lua-api-wiki.md`, `docs/lua-events-reference.md`
-- <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> — the real current
+- <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> - the real current
   API reference. The PZwiki `LuaDocs` page itself is stale, see
   `docs/luadocs-wiki-note.md`.
 
 Add newly-verified facts to `docs/` as they're confirmed rather than re-deriving
 them each time.
 
-`docs/api-documentation-sources.md` ranks every external doc source — which is
+`docs/api-documentation-sources.md` ranks every external doc source - which is
 current, which is archived, and the browser User-Agent needed to fetch `pzwiki.net`
 and `projectzomboid.com` (both 403 the default fetch agent).
 
@@ -64,7 +64,7 @@ whole machine: a deletion left `vw` behind in an arithmetic expression, luaparse
 parsed it happily, and `__sub not defined for operands` came back from the game.
 Assume any deletion has stranded a reference until this says otherwise.
 
-Never "fix" the atan2 or duplicate-set-field warnings — see
+Never "fix" the atan2 or duplicate-set-field warnings - see
 `.claude/memory/pz-lua-diagnostics-setup.md`.
 
 ## Repo checks
@@ -95,13 +95,13 @@ The CURRENT session's log sits at the `~/Zomboid/Logs/` root, not in the dated
 ls -t ~/Zomboid/Logs/*.txt | head
 ```
 
-Tail that file directly. Check its timestamp against the install's — an old log has
+Tail that file directly. Check its timestamp against the install's - an old log has
 twice nearly produced a false conclusion.
 
 ## Markdown
 
 Before committing a change to any `.md` file this repo authored (root files,
-`docs/*.md` — not the vendored `docs/pz-modding-guide/` snapshot):
+`docs/*.md` - not the vendored `docs/pz-modding-guide/` snapshot):
 
 ```
 npx prettier --check "*.md" "docs/*.md" "docs/conventions/*.md"

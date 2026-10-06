@@ -5,7 +5,7 @@ Auto-loaded into every session via `CLAUDE.md`. Rules, not background.
 ## Bump `modversion` in the same commit
 
 Any change to a mod's behaviour bumps `modversion` in that mod's `mod.info`, in the
-SAME commit — patch for fixes, minor for new behaviour or assets.
+SAME commit - patch for fixes, minor for new behaviour or assets.
 
 TwoManCrew has two `mod.info` files:
 
@@ -18,7 +18,7 @@ They must stay identical, and have drifted once already. Check both.
 
 ## What never tracks the mod's iteration
 
-Leave these alone — none of them is the mod's own version:
+Leave these alone - none of them is the mod's own version:
 
 | Field                        | What it actually tracks |
 | ---------------------------- | ----------------------- |

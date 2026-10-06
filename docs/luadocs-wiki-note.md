@@ -1,4 +1,4 @@
-# LuaDocs (PZwiki page) — read this before trusting the wiki page itself
+# LuaDocs (PZwiki page) - read this before trusting the wiki page itself
 
 Fetched 2026-08-13 from `https://pzwiki.net/wiki/LuaDocs`.
 
@@ -18,15 +18,15 @@ wiki. Use these, not the wiki page:
 
 It documents: callbacks, Lua events, hooks, a link to the current JavaDocs,
 classes with their functions/hierarchy/inheritance, and the source file
-location for each class — useful for finding where a class actually lives in
+location for each class - useful for finding where a class actually lives in
 `media/lua/`.
 
 ## What was verified there this session
 
-- Event `OnGameStart` — "Triggered upon finishing loading and entering the
+- Event `OnGameStart` - "Triggered upon finishing loading and entering the
   game." No parameters. Used for the example Lua hook in `example-mod/`.
 
 Anything else pulled from this site for future mods should get the same
 treatment: quote the exact wording found, note the date checked, and don't
-assume training-data knowledge of the Lua API is current — B42 changed a lot
+assume training-data knowledge of the Lua API is current - B42 changed a lot
 mid-cycle (see `pz-modding-guide/b42-changes.md` and `version-changelog.md`).

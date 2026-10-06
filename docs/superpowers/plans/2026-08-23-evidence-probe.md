@@ -10,7 +10,7 @@
 > What actually ran: nothing yet. When the tasks below are done, the gates that
 > will have run are `npm run check`, `lua-language-server --check=.` and
 > `npx prettier --check`. None of that executes a line of the mod. It is
-> proofreading, not testing — it cannot catch a wrong method name, a nil at
+> proofreading, not testing - it cannot catch a wrong method name, a nil at
 > runtime, a wrong event, or a UI that draws garbage.
 >
 > Every in-game check is OPEN.
@@ -436,7 +436,7 @@ Run from the repo root:
 
 Expected: no new diagnostics. `SGlobalObjects` will likely be reported as an
 undefined global. Add it to `types/pz.lua`, since the probe's whole purpose is
-to find out whether it exists at runtime — the stub records the shape, not a
+to find out whether it exists at runtime - the stub records the shape, not a
 claim that it is reachable.
 
 - [ ] **Step 5: Commit**
@@ -710,7 +710,7 @@ has twice nearly produced a false conclusion here.
 
 ## What "done" means for this plan
 
-- [ ] `npm run check` passes — proofreading only, proves nothing about behaviour.
+- [ ] `npm run check` passes - proofreading only, proves nothing about behaviour.
 - [ ] `lua-language-server --check=.` reports no new warnings.
 - [ ] Both `mod.info` files carry the same bumped `modversion`.
 - [ ] `npm run diagnose` runs without throwing against the current log.

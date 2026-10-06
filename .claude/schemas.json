@@ -3,6 +3,7 @@
     { "glob": "**/mod.info", "schema": ".claude/schemas/mod-info.schema.json", "format": "keyvalue" },
     { "glob": "*/workshop.txt", "schema": ".claude/schemas/workshop-txt.schema.json", "format": "keyvalue" },
     { "glob": ".claude/settings.json", "schema": ".claude/schemas/claude-settings.schema.json" },
-    { "glob": ".claude/allowed-paths.json", "schema": ".claude/schemas/allowed-paths.schema.json" }
+    { "glob": ".claude/allowed-paths.json", "schema": ".claude/schemas/allowed-paths.schema.json" },
+    { "glob": ".claude/content-rules.json", "schema": ".claude/schemas/content-rules.schema.json" }
   ]
 }

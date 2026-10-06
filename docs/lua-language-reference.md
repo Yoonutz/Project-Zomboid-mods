@@ -1,6 +1,6 @@
-# Lua language reference — which manual applies, and where PZ deviates
+# Lua language reference - which manual applies, and where PZ deviates
 
-Added 2026-08-22. This file covers the **base Lua language** — syntax, standard
+Added 2026-08-22. This file covers the **base Lua language** - syntax, standard
 library, semantics. For the game's own API (engine globals, events, exposed Java
 classes) see `api-documentation-sources.md`, `lua-api-wiki.md`, and
 `lua-events-reference.md`.
@@ -9,7 +9,7 @@ The distinction matters: a question like "does `table.unpack` exist" is a base
 Lua question answered here, while "does `getPlayer()` exist" is a PZ question
 answered by those files.
 
-## The version — 5.1, not current Lua
+## The version - 5.1, not current Lua
 
 Project Zomboid embeds **Kahlua**, a Java implementation of **Lua 5.1**
 (`se.krka.kahlua.vm` in the JavaDocs package tree). Lua's current release is 5.5.
@@ -20,7 +20,7 @@ Project Zomboid embeds **Kahlua**, a Java implementation of **Lua 5.1**
   <https://www.lua.org/manual/5.1/manual.html>
 - Documentation index (all versions, books):
   <https://www.lua.org/docs.html>
-- Programming in Lua, 1st edition — free online, written for 5.0 but the
+- Programming in Lua, 1st edition - free online, written for 5.0 but the
   language chapters are close enough to 5.1 to be useful:
   <https://www.lua.org/pil/contents.html>
 
@@ -44,7 +44,7 @@ These are all real 5.2+ features that do **not** exist here:
 Each row above was checked by parsing a snippet with `luaparse` in `luaVersion:
 '5.1'` mode (the repo's own parser, `two-man-crew/check-lua.mjs`). All five
 constructs are rejected; `unpack` parses. Note this proves only what the 5.1
-_grammar_ rejects — for library-level questions, grep the shipped game source.
+_grammar_ rejects - for library-level questions, grep the shipped game source.
 
 A comment in the shipped source settles the `goto` point directly:
 
@@ -73,7 +73,7 @@ require "TimedActions.ISBaseTimedAction"   -- wrong, dot notation
 Counts across the shipped source: 1,112 slash-form paths, **zero** dot-form.
 Quote style is free (`require "x"`, `require 'x'`, `require("x")` all appear).
 
-### Standard library — what the game actually touches
+### Standard library - what the game actually touches
 
 | Library      | Shipped-source usage                                  |
 | ------------ | ----------------------------------------------------- |
@@ -86,14 +86,14 @@ Quote style is free (`require "x"`, `require 'x'`, `require("x")` all appear).
 | `debug`      | **Zero** uses.                                        |
 | `loadstring` | 8 uses. `load()` on a string is not the 5.1 spelling. |
 
-**File I/O does not go through `io`.** PZ provides its own engine functions —
-`getFileWriter` / `getModFileWriter` — and as of a recent build `getFileWriter`
+**File I/O does not go through `io`.** PZ provides its own engine functions -
+`getFileWriter` / `getModFileWriter` - and as of a recent build `getFileWriter`
 is restricted to `ini`, `cfg`, `txt`, `log`, `json` extensions
 (`getModFileWriter` is not restricted). See `api-documentation-sources.md`.
 
 A zero count means "the vanilla game never does this", which is strong evidence
 about what is idiomatic and supported. It is not the same as a hard proof the
-function is absent — but reaching for something the entire game avoids needs a
+function is absent - but reaching for something the entire game avoids needs a
 reason, and needs in-game testing.
 
 ### Error handling
@@ -115,11 +115,11 @@ Static fields still read directly. Detail in `lua-api-wiki.md`.
 | ----------------------------------------------- | ------------------------------------- |
 | Syntax, semantics, metatables, scoping          | 5.1 manual, sections 2 and 8          |
 | A standard library function's exact signature   | 5.1 manual, section 5                 |
-| "Is this 5.2+ only?"                            | 5.1 manual — absent means unavailable |
+| "Is this 5.2+ only?"                            | 5.1 manual - absent means unavailable |
 | Learning the language properly                  | Programming in Lua 1st ed             |
 | Whether PZ actually supports/uses a stdlib call | grep the shipped source               |
 | Engine globals, events, Java classes            | `api-documentation-sources.md`        |
 
 Sections 3 (C API) and 4 (Auxiliary Library) of the manual describe embedding
-Lua in a C host. They are irrelevant here — the host is Java, and mods never
+Lua in a C host. They are irrelevant here - the host is Java, and mods never
 touch that layer.

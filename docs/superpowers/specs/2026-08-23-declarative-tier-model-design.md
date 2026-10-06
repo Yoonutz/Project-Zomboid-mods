@@ -7,7 +7,7 @@
 >
 > What actually ran while writing this document: source reading of the installed
 > Build 42.20.3 Lua tree, and source reading of two Steam Workshop quest mods.
-> None of that executes a line of the mod. It is proofreading, not testing — it
+> None of that executes a line of the mod. It is proofreading, not testing - it
 > cannot catch a wrong method name, a nil at runtime, a wrong event, or a UI that
 > draws garbage.
 >
@@ -37,7 +37,7 @@ than a convention each check remembers separately.
 **Where chunk-free data comes from.** Two sources, both already used by this mod:
 
 - The MetaGrid, for buildings and rooms. Keyed by x/y alone, no square load.
-- Server-side global object systems, for troughs and — new in this design — rain
+- Server-side global object systems, for troughs and - new in this design - rain
   barrels and crops. Their positions and state live in system ModData, not on the
   square.
 
@@ -48,8 +48,8 @@ decision on 2026-08-22. Do not invent a mock harness mid-plan.
 
 The real gates are:
 
-- `npm run check` from `two-man-crew/` — parses every Lua file. Proofreading only.
-- `lua-language-server --check=.` from the repo root — the only scope-aware check,
+- `npm run check` from `two-man-crew/` - parses every Lua file. Proofreading only.
+- `lua-language-server --check=.` from the repo root - the only scope-aware check,
   so it is the only one that catches a variable a deletion stranded.
 - A Project Zomboid session. Nothing else proves behaviour.
 
@@ -93,7 +93,7 @@ file and registered into a table, not written as branches.
 
 A tier's persisted state stays exactly what it is today: a single reached flag
 under `state.tiers`, sparse-safe, flipped false to true exactly once per save.
-The existing idempotency rule is unchanged — an already-true tier is never
+The existing idempotency rule is unchanged - an already-true tier is never
 re-evaluated, so the flip itself gates the announcement and the journal write.
 
 ### Layer 2: Task
@@ -115,9 +115,9 @@ save schema additive and keeps old saves loading cleanly.
 A condition is the only code layer. It is a function registered under an id,
 called as `condition(context, params)`, returning one of three verdicts:
 
-- `pass` — the condition is met, proven from observed game state.
-- `fail` — the condition is not met, proven from observed game state.
-- `unknown` — the game could not be read. Unloaded ground, a missing global object
+- `pass` - the condition is met, proven from observed game state.
+- `fail` - the condition is not met, proven from observed game state.
+- `unknown` - the game could not be read. Unloaded ground, a missing global object
   system, or a claim recorded before footprints existed.
 
 `unknown` is never treated as `fail`. A tier containing any `unknown` task is
@@ -374,7 +374,7 @@ commit, per the repo's versioning rule.
 
 ## What "done" means for each step
 
-- [ ] `npm run check` passes — proofreading only, proves nothing about behaviour.
+- [ ] `npm run check` passes - proofreading only, proves nothing about behaviour.
 - [ ] `lua-language-server --check=.` from the repo root reports no new warnings.
 - [ ] A Project Zomboid session loads the build without a Lua error in the log.
 - [ ] The tier that step targets is observed changing state in game, with the log

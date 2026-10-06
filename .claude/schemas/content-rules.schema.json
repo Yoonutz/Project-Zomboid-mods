@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Content rules (.claude/content-rules.json)",
+  "description": "The config the content-rules hook reads. A malformed file is skipped with one warning, so this catches the mistake at write time.",
+  "type": "object",
+  "required": ["rules"],
+  "additionalProperties": false,
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "glob"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "glob": { "type": "string", "minLength": 1 },
+          "maxWords": { "type": "integer", "minimum": 1 },
+          "minWords": { "type": "integer", "minimum": 0 },
+          "bannedPhrases": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "requiredSections": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  }
+}

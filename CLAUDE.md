@@ -4,7 +4,7 @@ A Project Zomboid Build 42 modding workspace. Several mods, one per top-level
 folder, sharing a docs tree and a mod template. `two-man-crew/` is the active one
 and carries all the build tooling; the rest are smaller and mostly stable.
 
-This file holds context — the things that change how an answer should be framed.
+This file holds context - the things that change how an answer should be framed.
 The enforceable rules are imported at the bottom and load with it.
 
 ## What makes this repo unusual
@@ -18,7 +18,7 @@ The practical effect on answers: any statement about runtime behaviour is a
 hypothesis, and should be labelled as one. Three consecutive TwoManCrew builds were
 shipped on code-reading alone and all three were wrong, each costing a round trip.
 When a fault only appears in-game, the move is instrumentation first and a fix
-second — ship `print()` calls, ask for one run, then fix what the log names. Asking
+second - ship `print()` calls, ask for one run, then fix what the log names. Asking
 for a two-minute run is cheaper than a wrong build.
 
 **The installed copy may deliberately sit behind the repo.** It is sometimes pinned
@@ -30,7 +30,7 @@ for `node deploy.mjs --check`, never for a number written here.
 `table.unpack`, integer division and bitwise operators do not exist here.
 
 **Multiplayer is the default assumption.** Code paths differ between the host and a
-remote client, and a bug that is invisible in singleplayer can still be real —
+remote client, and a bug that is invisible in singleplayer can still be real -
 `sendServerCommand` reaches nobody in singleplayer, and `server/` files load on
 clients too.
 
@@ -51,7 +51,7 @@ This repo's memories live in `.claude/memory/`, indexed by
 clone. They used to sit outside the repo in the user profile, where they were
 invisible to anyone else and to a fresh checkout.
 
-An index line is a pointer — read the memory file before acting on its topic. Global
+An index line is a pointer - read the memory file before acting on its topic. Global
 cross-project memories in `~/.claude/memories/` still apply on top of these; the two
 stores are consulted, never merged.
 

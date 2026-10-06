@@ -1,13 +1,13 @@
 # pz-b42-mods
 
 A Project Zomboid Build 42 modding workspace: reference docs, a reusable mod
-template, and worked examples. Each mod lives in its own top-level folder —
+template, and worked examples. Each mod lives in its own top-level folder -
 this is not a single-mod repo.
 
 ## Layout
 
 ```
-docs/            reference material — read before writing any code
+docs/            reference material - read before writing any code
 _template/       copy this folder to start a new mod (rename MOD_ID)
 example-mod/     worked example: one item, one Lua hook, both verified
 <your-mod>/      each new mod goes here, one top-level folder per mod
@@ -18,15 +18,15 @@ example-mod/     worked example: one item, one Lua hook, both verified
 1. Copy `_template/` to `<your-mod-name>/`.
 2. Rename `Contents/mods/MOD_ID/` to `Contents/mods/<YourModID>/`.
 3. Fill in `mod.info` (`name`, `id`, `author`, `description`) in `41/` and
-   `42/` — see `docs/pz-modding-guide/mod-structure.md`.
+   `42/` - see `docs/pz-modding-guide/mod-structure.md`.
 4. Fill in `workshop.txt` at the mod root.
 5. Add scripts under `Contents/mods/<YourModID>/42/media/scripts/`, Lua under
    `.../42/media/lua/{client,server,shared}/`. Use `common/` only for Lua
-   shared between B41 and B42 — item/recipe script syntax is not compatible
+   shared between B41 and B42 - item/recipe script syntax is not compatible
    between builds.
 6. Before using any Lua function or event not already noted in
    `docs/lua-events-reference.md` or `docs/lua-api-wiki.md`, verify it against
-   those docs or <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> —
+   those docs or <https://demiurgequantified.github.io/ProjectZomboidLuaDocs/> -
    do not rely on memory of older PZ versions, B42 changed a lot mid-cycle.
 
 ## Local testing
@@ -36,7 +36,7 @@ then enable it from the in-game Mods menu.
 
 **Copy, never symlink.** A directory junction here was removed on 2026-08-22 after
 it caused a multiplayer version mismatch, and the tooling refuses to write through
-one — deleting a link's contents deletes the repo's. See `docs/conventions/deploy.md`.
+one - deleting a link's contents deletes the repo's. See `docs/conventions/deploy.md`.
 
 TwoManCrew has this automated: `node deploy.mjs` from `two-man-crew/`.
 

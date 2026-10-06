@@ -8,7 +8,7 @@
 > What actually ran while writing this plan: `npm run check` (29/29 parsed), the
 > `pz-status` skill, and read-only greps over the repo and the installed game
 > source. None of that executes a line of the mod. It is proofreading, not
-> testing — it cannot catch a wrong method name, a nil at runtime, a wrong
+> testing - it cannot catch a wrong method name, a nil at runtime, a wrong
 > event, or a UI that draws garbage.
 >
 > Every in-game check is OPEN. In particular Task 1 records a question that
@@ -18,7 +18,7 @@
 
 **Goal:** Close the gap between the rules this repo writes down and the rules anything actually enforces, and correct the committed statements that are false today.
 
-**Architecture:** Three groups. Group A (Tasks 1-3) corrects auto-loaded text that misstates fact — zero code risk, highest value per minute. Group B (Tasks 4-7) turns four prose rules into mechanical checks inside `check-lua.mjs`, the one command the conventions already tell every session to run. Group C (Tasks 8-10) fixes the remaining verified drift and commits what is stranded in the working tree.
+**Architecture:** Three groups. Group A (Tasks 1-3) corrects auto-loaded text that misstates fact - zero code risk, highest value per minute. Group B (Tasks 4-7) turns four prose rules into mechanical checks inside `check-lua.mjs`, the one command the conventions already tell every session to run. Group C (Tasks 8-10) fixes the remaining verified drift and commits what is stranded in the working tree.
 
 **Tech Stack:** Node 20+ ESM build scripts, PowerShell 7 for the status skill, Lua 5.1 (Kahlua) for the mod itself, Project Zomboid Build 42.
 
@@ -52,7 +52,7 @@ The language server is **not on PATH**. It ships inside the VS Code Lua extensio
 
 Never "fix" the `atan2` or `duplicate-set-field` warnings it reports.
 
-**Do not author tests in this repo.** The red-green steps in this plan use the repo's _own_ checks against real repo state — you make a checker report a defect that genuinely exists, then remove the defect. That is running an existing gate, not writing a test. If you believe a real test is warranted somewhere, stop and invoke `superpowers:test-driven-development` rather than improvising one.
+**Do not author tests in this repo.** The red-green steps in this plan use the repo's _own_ checks against real repo state - you make a checker report a defect that genuinely exists, then remove the defect. That is running an existing gate, not writing a test. If you believe a real test is warranted somewhere, stop and invoke `superpowers:test-driven-development` rather than improvising one.
 
 ### The language is Lua 5.1 (Kahlua)
 
@@ -67,11 +67,11 @@ Not current Lua. `goto`, `table.unpack`, integer division and bitwise operators 
 - **Never deploy while the game is running.** Closing that hole is Task 4.
 - The install at `~/Zomboid/mods/TwoManCrew` is a **copy**, never a junction. The junction was deleted 2026-08-22. Do not recreate one or suggest it.
 - Before committing any `.md` this repo authored, run `npx prettier --check` on it. Skip the vendored `docs/pz-modding-guide/` snapshot.
-- Never add Claude attribution to a commit — no `Co-authored-by`, no "Generated with", no mention.
+- Never add Claude attribution to a commit - no `Co-authored-by`, no "Generated with", no mention.
 
 ### Where the current state came from
 
-Every defect this plan fixes was verified by reading, not inferred. The evidence sits in `~/.claude/my-business/01_INBOX/consensus/consensus_report.md`, which is ephemeral and will be overwritten by the next poll — so the relevant evidence is restated inline in each task below. You do not need that file.
+Every defect this plan fixes was verified by reading, not inferred. The evidence sits in `~/.claude/my-business/01_INBOX/consensus/consensus_report.md`, which is ephemeral and will be overwritten by the next poll - so the relevant evidence is restated inline in each task below. You do not need that file.
 
 ---
 
@@ -102,7 +102,7 @@ Every defect this plan fixes was verified by reading, not inferred. The evidence
 
 The highest-value change in the plan, and the least risky. Docs only.
 
-**Background you need.** `.claude/memory/MEMORY.md` is imported into every session by `CLAUDE.md`, so its one-line entries load every time. The individual memory files do **not** auto-load — an index line is a pointer.
+**Background you need.** `.claude/memory/MEMORY.md` is imported into every session by `CLAUDE.md`, so its one-line entries load every time. The individual memory files do **not** auto-load - an index line is a pointer.
 
 Line 26 currently ends `no goto/pcall/io`. That asserts `pcall` does not exist in this engine. The memory file it points at says something materially different and more careful, at `.claude/memory/pz-runs-lua-5-1-kahlua.md:34`:
 
@@ -136,14 +136,14 @@ grep -n "kahlua" .claude/memory/MEMORY.md
 grep -rn "pcall" --include=*.lua two-man-crew/ | grep -v "^.*--" | wc -l
 ```
 
-Expected: the index line contains `no goto/pcall/io`, and the count of `pcall` references is non-zero. If the index line no longer says that, this task is already done — skip to Task 2.
+Expected: the index line contains `no goto/pcall/io`, and the count of `pcall` references is non-zero. If the index line no longer says that, this task is already done - skip to Task 2.
 
 - [ ] **Step 2: Rewrite the index line**
 
 Replace line 26 of `.claude/memory/MEMORY.md` entirely with:
 
 ```markdown
-- [pz-runs-lua-5-1-kahlua](pz-runs-lua-5-1-kahlua.md) — PZ is Lua 5.1 (Kahlua): use the 5.1 manual, `require` takes slash paths, `unpack` not `table.unpack`, no `goto`; `pcall`/`io`/`coroutine` are unused by vanilla but NOT proven absent — the mod itself calls `pcall` in 7 places
+- [pz-runs-lua-5-1-kahlua](pz-runs-lua-5-1-kahlua.md) - PZ is Lua 5.1 (Kahlua): use the 5.1 manual, `require` takes slash paths, `unpack` not `table.unpack`, no `goto`; `pcall`/`io`/`coroutine` are unused by vanilla but NOT proven absent - the mod itself calls `pcall` in 7 places
 ```
 
 - [ ] **Step 3: Record the open question in the memory body**
@@ -186,7 +186,7 @@ Whether Kahlua provides pcall is still open and needs a game run. Recorded as op
 
 **Background.** Both files below load into every session. Both state the install is pinned at `0.1.0` behind the repo. That was true once and is false now: `pz-status` reports repo `0.10.5`, installed `0.10.5`, 41 files identical.
 
-`.claude/memory/mods-folder-copy-install.md` already learned this lesson and was corrected to treat versions in prose as historical. The convention docs were not given the same treatment. The fix is not to write in today's numbers — they go stale the same way — but to point at the command that reports live state.
+`.claude/memory/mods-folder-copy-install.md` already learned this lesson and was corrected to treat versions in prose as historical. The convention docs were not given the same treatment. The fix is not to write in today's numbers - they go stale the same way - but to point at the command that reports live state.
 
 **Files:**
 
@@ -201,7 +201,7 @@ node two-man-crew/deploy.mjs --check
 grep -n "0\.1\.0" docs/conventions/deploy.md CLAUDE.md
 ```
 
-Expected: `--check` prints matching repo and installed versions; the grep finds the stale `0.1.0` text. If repo and installed genuinely differ, the pin may be real again — stop and ask rather than editing.
+Expected: `--check` prints matching repo and installed versions; the grep finds the stale `0.1.0` text. If repo and installed genuinely differ, the pin may be real again - stop and ask rather than editing.
 
 - [ ] **Step 2: Rewrite the deploy.md section**
 
@@ -213,7 +213,7 @@ Replace the whole `## The install is deliberately pinned behind the repo` sectio
 The install is sometimes held at an older version deliberately, to match the other
 player in a co-op save. **Never "sync" the install to the repo without asking.**
 
-Do not trust any version number written in prose here — this section has been
+Do not trust any version number written in prose here - this section has been
 wrong before. Ask the tooling instead:
 
 ```
@@ -264,7 +264,7 @@ Points at deploy.mjs --check instead of naming a number that goes stale again."
 
 ## Task 3: Fix the README instructions that contradict the deploy rule
 
-**Background.** `README.md:34` tells the reader to "Copy (or symlink)" a mod into `~/Zomboid/mods/`. The symlink half is forbidden: the junction was deleted 2026-08-22, and `deploy.mjs:66` refuses to write through a link because deleting the link's contents would delete the repo's. The README's Status section also claims no PZ install was available in this workspace, which is false — the game was running while this plan was written.
+**Background.** `README.md:34` tells the reader to "Copy (or symlink)" a mod into `~/Zomboid/mods/`. The symlink half is forbidden: the junction was deleted 2026-08-22, and `deploy.mjs:66` refuses to write through a link because deleting the link's contents would delete the repo's. The README's Status section also claims no PZ install was available in this workspace, which is false - the game was running while this plan was written.
 
 **Files:**
 
@@ -280,7 +280,7 @@ then enable it from the in-game Mods menu.
 
 **Copy, never symlink.** A directory junction here was removed on 2026-08-22 after
 it caused a multiplayer version mismatch, and the tooling refuses to write through
-one — deleting a link's contents deletes the repo's. See `docs/conventions/deploy.md`.
+one - deleting a link's contents deletes the repo's. See `docs/conventions/deploy.md`.
 
 TwoManCrew has this automated: `node deploy.mjs` from `two-man-crew/`.
 
@@ -325,7 +325,7 @@ Its status note also said no PZ install was available here. There is one, and th
 
 ## Task 4: Stop `deploy.mjs` wiping a live install
 
-**Background, and why this one matters most in Group B.** `docs/conventions/deploy.md` says "Never deploy while the game is running." The `pz-status` skill enforces that for its own `-Sync` path at `status.ps1:30` with a process check. `deploy.mjs` — the canonical installer that `package.json`, the convention docs and the memory file all point at — has **no such check**. Its only `process` references are Node's own global. It goes straight to:
+**Background, and why this one matters most in Group B.** `docs/conventions/deploy.md` says "Never deploy while the game is running." The `pz-status` skill enforces that for its own `-Sync` path at `status.ps1:30` with a process check. `deploy.mjs` - the canonical installer that `package.json`, the convention docs and the memory file all point at - has **no such check**. Its only `process` references are Node's own global. It goes straight to:
 
 ```js
 rmSync(dest, { recursive: true, force: true });
@@ -389,7 +389,7 @@ if (gameIsRunning()) {
 
 Note the `catch` returns `true`. If the process list cannot be read, the safe answer is to refuse.
 
-- [ ] **Step 4: Verify the guard fires — the game is running now**
+- [ ] **Step 4: Verify the guard fires - the game is running now**
 
 ```bash
 cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew"
@@ -438,7 +438,7 @@ TwoManCrew_WatchMyBack.lua
 
 All five contain zero occurrences of `isClient()` and all five register `Events.OnClientCommand.Add(...)` at module scope.
 
-**Be precise about severity, and do not oversell it in the commit message.** `OnClientCommand` does not fire on a multiplayer client, so a file whose only module-scope act is registering that handler is inert there. The real exposure is `Restoration.lua`, which defines `TwoManCrew.Server.*` from line 48 with no guard while `CrewState.lua` bails at line 23 — the same shape as the 0.1.8 bug. The other four are policy violations and latent hazards. Fix all five anyway: a guard present in 9 of 14 files reads as deliberate, which is exactly why nothing flagged the gap.
+**Be precise about severity, and do not oversell it in the commit message.** `OnClientCommand` does not fire on a multiplayer client, so a file whose only module-scope act is registering that handler is inert there. The real exposure is `Restoration.lua`, which defines `TwoManCrew.Server.*` from line 48 with no guard while `CrewState.lua` bails at line 23 - the same shape as the 0.1.8 bug. The other four are policy violations and latent hazards. Fix all five anyway: a guard present in 9 of 14 files reads as deliberate, which is exactly why nothing flagged the gap.
 
 This task adds the check first so you watch it catch a real defect, then removes the defect.
 
@@ -500,7 +500,7 @@ mods\TwoManCrew\42\media\lua\server\TwoManCrew\TwoManCrew_TwoManCarry.lua
 mods\TwoManCrew\42\media\lua\server\TwoManCrew\TwoManCrew_WatchMyBack.lua
 ```
 
-If a different set appears, the repo moved since this plan was written — fix what it names, not what this list names.
+If a different set appears, the repo moved since this plan was written - fix what it names, not what this list names.
 
 - [ ] **Step 3: Add the guard to each of the five files**
 
@@ -543,7 +543,7 @@ Expected: no new diagnostics beyond the pre-existing `atan2` and `duplicate-set-
 
 - [ ] **Step 6: Bump `modversion` in both `mod.info` files**
 
-This task changes mod behaviour, so it bumps — patch level, `0.10.5` to `0.10.6`. Both files, identical, same commit:
+This task changes mod behaviour, so it bumps - patch level, `0.10.5` to `0.10.6`. Both files, identical, same commit:
 
 ```bash
 sed -i 's/^modversion=0\.10\.5$/modversion=0.10.6/' \
@@ -571,11 +571,11 @@ Unverified in-game."
 
 ## Task 6: Fix the dangling-call checker's blind spot and move it into the gate
 
-**Background.** There is an **uncommitted** change in the working tree adding a `== DANGLING CALLS ==` section to `.claude/skills/pz-status/status.ps1` (about 62 added lines). Its purpose is real and fills a gap nothing else covers: luaparse checks syntax only, and the language server reports undefined globals but not undefined _fields_ on a table — and every one of this mod's namespaced functions is a field on a table.
+**Background.** There is an **uncommitted** change in the working tree adding a `== DANGLING CALLS ==` section to `.claude/skills/pz-status/status.ps1` (about 62 added lines). Its purpose is real and fills a gap nothing else covers: luaparse checks syntax only, and the language server reports undefined globals but not undefined _fields_ on a table - and every one of this mod's namespaced functions is a field on a table.
 
 Two problems, both verified:
 
-1. **It is nearly blind.** It treats a class as "ours" only when matched by `X = Base:derive(`. Exactly **2 of 29** files use `:derive(`. Every other file hits `if ($ours.Count -eq 0) { continue }` and is skipped whole. The `TwoManCrew.Server` / `.Client` / `.Prefs` namespaces are built with `X = X or {}` and are invisible: **25 functions, 25 call sites**, including `TwoManCrew.Server.getState` — the exact function whose absence caused the 0.1.8 bug. It currently prints `none - every call resolves to a definition` while inspecting 7% of the codebase. That is worse than no check, because it manufactures confidence.
+1. **It is nearly blind.** It treats a class as "ours" only when matched by `X = Base:derive(`. Exactly **2 of 29** files use `:derive(`. Every other file hits `if ($ours.Count -eq 0) { continue }` and is skipped whole. The `TwoManCrew.Server` / `.Client` / `.Prefs` namespaces are built with `X = X or {}` and are invisible: **25 functions, 25 call sites**, including `TwoManCrew.Server.getState` - the exact function whose absence caused the 0.1.8 bug. It currently prints `none - every call resolves to a definition` while inspecting 7% of the codebase. That is worse than no check, because it manufactures confidence.
 
 2. **It is in the wrong place.** It runs only when someone invokes the `pz-status` skill. A commit made without invoking it skips the check entirely.
 
@@ -675,13 +675,13 @@ npm run check; echo "exit=$?"
 
 Expected: a `dangling calls ok` line reporting **6 namespaces** (`TwoManCrewPanel`, `TwoManCrewJournalWindow`, `TwoManCrew.Client`, `TwoManCrew.LocalHandlers`, `TwoManCrew.Prefs`, `TwoManCrew.Server`) and roughly 25+ definitions.
 
-The namespace count is the point of this step. If it reports 2, the `X = X or {}` pattern did not match and the checker is still blind — fix the regex before continuing. Do not accept a passing run that inspected 7% of the code.
+The namespace count is the point of this step. If it reports 2, the `X = X or {}` pattern did not match and the checker is still blind - fix the regex before continuing. Do not accept a passing run that inspected 7% of the code.
 
 If it reports genuine dangling calls, they are real defects: fix them, or if a name is engine-provided rather than ours, narrow `ours` rather than deleting the check.
 
 - [ ] **Step 5: Remove the duplicated block from `status.ps1`**
 
-Delete the entire `# ---- dangling calls` section added in the working tree — from the comment banner through the closing `}` of its `if ($dangling.Count -eq 0) { ... } else { ... }`, ending just before the `# ---- the log` banner. `status.ps1` goes back to reporting only.
+Delete the entire `# ---- dangling calls` section added in the working tree - from the comment banner through the closing `}` of its `if ($dangling.Count -eq 0) { ... } else { ... }`, ending just before the `# ---- the log` banner. `status.ps1` goes back to reporting only.
 
 - [ ] **Step 6: Verify the skill still runs**
 
@@ -694,7 +694,7 @@ Expected: `== GAME ==`, `== INSTALL ==`, `== LOG ==`, `== MOD ERRORS ==`, `== TI
 
 - [ ] **Step 7: Commit**
 
-Tooling only — no `modversion` bump.
+Tooling only - no `modversion` bump.
 
 ```bash
 git add two-man-crew/check-lua.mjs .claude/skills/pz-status/status.ps1
@@ -709,7 +709,7 @@ Now matches both shapes, and lives in npm run check rather than a skill nobody h
 
 ## Task 7: Fold the `mod.info` parity check into the same gate
 
-**Background.** TwoManCrew's two `mod.info` files must stay identical; `docs/conventions/versioning.md` records that they have drifted once. Today only `deploy.mjs` checks parity, and only at deploy time — so a drift committed on Monday surfaces on Thursday when someone installs. Both currently read `0.10.5` (or `0.10.6` after Task 5), so this check will pass; it is a tripwire, not a repair.
+**Background.** TwoManCrew's two `mod.info` files must stay identical; `docs/conventions/versioning.md` records that they have drifted once. Today only `deploy.mjs` checks parity, and only at deploy time - so a drift committed on Monday surfaces on Thursday when someone installs. Both currently read `0.10.5` (or `0.10.6` after Task 5), so this check will pass; it is a tripwire, not a repair.
 
 **Files:**
 
@@ -827,7 +827,7 @@ versionMin=42.0.0
 `two-man-crew/SPEC.md:113` names `luacheck` and `luac -p`. Neither appears anywhere else in the repo and neither is installed. Replace that line with:
 
 ```markdown
-- [ ] Passes `npm run check` — parses under luaparse, server guards present, no dangling calls, mod.info copies agree
+- [ ] Passes `npm run check` - parses under luaparse, server guards present, no dangling calls, mod.info copies agree
 ```
 
 - [ ] **Step 3: Remove the four links to a memory that does not exist**
@@ -853,7 +853,7 @@ Expected: no output, `exit=1`.
 
 `docs/conventions/skills.md` says a plan's status banner "names a version and a date, not a branch". The banner in `docs/superpowers/plans/2026-08-22-campaign-task-cards.md` names `feature/campaign-task-cards`. `git branch -a` shows only `master`; that branch has never existed.
 
-Edit that banner to drop the branch name, keeping the version and date. Leave everything else in that plan alone — it is a record of past work.
+Edit that banner to drop the branch name, keeping the version and date. Leave everything else in that plan alone - it is a record of past work.
 
 - [ ] **Step 5: Check formatting and commit**
 
@@ -873,7 +873,7 @@ A plan banner named a branch, in a repo whose own convention says banners name a
 
 ## Task 9: Commit the lockfile so the one dependency stops floating
 
-**Background.** `.gitignore:16` ignores `package-lock.json`. `two-man-crew/package-lock.json` exists on disk but is untracked, so `luaparse: ^0.3.1` resolves to whatever is newest on a fresh clone. One dev dependency, low stakes — but the fix is two lines and the parser is now the repo's only real gate.
+**Background.** `.gitignore:16` ignores `package-lock.json`. `two-man-crew/package-lock.json` exists on disk but is untracked, so `luaparse: ^0.3.1` resolves to whatever is newest on a fresh clone. One dev dependency, low stakes - but the fix is two lines and the parser is now the repo's only real gate.
 
 **Files:**
 
@@ -914,7 +914,7 @@ cd "d:/Dropbox/Apps/Project Zomboid/two-man-crew"
 npm run check; echo "exit=$?"
 ```
 
-Expected: `exit=0`, all sections ok. Do **not** run `npm --prefix ... install` from the repo root — `--prefix` adds the parent as a `file:..` dependency and symlinks the whole repo. `cd` into `two-man-crew/` first, as above.
+Expected: `exit=0`, all sections ok. Do **not** run `npm --prefix ... install` from the repo root - `--prefix` adds the parent as a `file:..` dependency and symlinks the whole repo. `cd` into `two-man-crew/` first, as above.
 
 - [ ] **Step 4: Commit**
 
@@ -927,7 +927,7 @@ node --no-warnings --experimental-strip-types ~/.claude/scripts/git-commit.ts "b
 
 ## Task 10: Make the gate fire without anyone remembering it
 
-**Background, and the reason this task is last.** Every rule this repo cares about was prose only. The project `.claude/settings.json` is `{}` and `.git/hooks/` holds nothing but samples. The user's own `~/.claude` enforces its top rules with hooks "so they hold regardless of what the model decides"; this repo did not. That is the root cause behind Tasks 5, 6, 7 and 8 — each was a written rule that nothing checked.
+**Background, and the reason this task is last.** Every rule this repo cares about was prose only. The project `.claude/settings.json` is `{}` and `.git/hooks/` holds nothing but samples. The user's own `~/.claude` enforces its top rules with hooks "so they hold regardless of what the model decides"; this repo did not. That is the root cause behind Tasks 5, 6, 7 and 8 - each was a written rule that nothing checked.
 
 Tasks 5-7 already moved four rules into `check-lua.mjs`. This task makes that command run on its own.
 
@@ -966,7 +966,7 @@ Replace the contents of `.claude/settings.json` with:
 }
 ```
 
-This runs the full gate — parse, server guards, dangling calls, `mod.info` parity — after every file edit, and surfaces the output. It is deliberately not a blocking `PreToolUse` gate on commits: a blocking hook that misfires on this repo's own tooling edits would be worse than the problem, and the gate is fast enough to run on every edit.
+This runs the full gate - parse, server guards, dangling calls, `mod.info` parity - after every file edit, and surfaces the output. It is deliberately not a blocking `PreToolUse` gate on commits: a blocking hook that misfires on this repo's own tooling edits would be worse than the problem, and the gate is fast enough to run on every edit.
 
 - [ ] **Step 3: Verify the JSON parses**
 
@@ -980,7 +980,7 @@ Expected: the settings object prints back. A `SyntaxError` means a stray comma.
 
 Make a trivial whitespace edit to any file under `two-man-crew/Contents/` using the Edit tool, then revert it. The check output should appear after the edit.
 
-If it does not fire, the settings file may need the session reloaded — note that rather than rewriting the hook shape. Do not spend more than one attempt here; report it unverified instead.
+If it does not fire, the settings file may need the session reloaded - note that rather than rewriting the hook shape. Do not spend more than one attempt here; report it unverified instead.
 
 - [ ] **Step 5: Commit**
 
@@ -1019,7 +1019,7 @@ Expected: no new diagnostics beyond the pre-existing `atan2` and `duplicate-set-
 & ".claude/skills/pz-status/status.ps1"
 ```
 
-Expected: all sections print, no `== DANGLING CALLS ==` section, no PowerShell errors. The install will now read `0.10.5` against a repo at `0.10.6` — that gap is expected and is **not** to be closed by deploying. Ask first.
+Expected: all sections print, no `== DANGLING CALLS ==` section, no PowerShell errors. The install will now read `0.10.5` against a repo at `0.10.6` - that gap is expected and is **not** to be closed by deploying. Ask first.
 
 - [ ] **Confirm the working tree is clean**
 
@@ -1050,5 +1050,5 @@ Two items stay OPEN and neither is closed by this plan:
 
 - **Deleting the root-level `two-man-crew/Contents/mods/TwoManCrew/mod.info`.** The vendored `docs/pz-modding-guide/mod-structure.md` shows `mod.info` only inside `42/`, and no other mod here has a root copy, so it looks redundant. But that diagram is labelled "Minimal Structure", which is not evidence the root copy goes unread, and the downside of being wrong is a broken install. It needs a game run, not a guess.
 - **Splitting `TwoManCrew_JournalWindow.lua`** (1,258 lines against a 488-line runner-up, and named in the file-ownership memory as a source of agent collisions). Real, but a large refactor of the most UI-heavy file in a repo where UI cannot be tested locally. It wants its own plan and a session that can look at the screen.
-- **Generalising `deploy.mjs`, `diagnose.mjs` and `status.ps1` across all six mods.** They hardcode `TwoManCrew`; `check-lua.mjs` is already mod-agnostic. Worth doing when a second mod grows Lua — today five of six have none, so it would be tooling with nothing to tool.
+- **Generalising `deploy.mjs`, `diagnose.mjs` and `status.ps1` across all six mods.** They hardcode `TwoManCrew`; `check-lua.mjs` is already mod-agnostic. Worth doing when a second mod grows Lua - today five of six have none, so it would be tooling with nothing to tool.
 - **The global `"model": "opus[1m]"` default versus the stated 60/30/10 routing policy.** Cross-project and a cost/quality tradeoff that belongs to the user, not to this repo.

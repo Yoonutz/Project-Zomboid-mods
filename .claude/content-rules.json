@@ -1,0 +1,41 @@
+{
+  "rules": [
+    {
+      "name": "spec-structure",
+      "glob": "docs/superpowers/specs/*.md",
+      "maxWords": 4000,
+      "requiredSections": ["## The problem", "## The design"]
+    },
+    {
+      "name": "plan-structure",
+      "glob": "docs/superpowers/plans/*.md",
+      "maxWords": 6000,
+      "requiredSections": ["## Context for the implementer"]
+    },
+    {
+      "name": "root-docs-no-em-dash",
+      "glob": "*.md",
+      "bannedPhrases": ["—"]
+    },
+    {
+      "name": "docs-no-em-dash",
+      "glob": "docs/*.md",
+      "bannedPhrases": ["—"]
+    },
+    {
+      "name": "conventions-no-em-dash",
+      "glob": "docs/conventions/*.md",
+      "bannedPhrases": ["—"]
+    },
+    {
+      "name": "superpowers-no-em-dash",
+      "glob": "docs/superpowers/**/*.md",
+      "bannedPhrases": ["—"]
+    },
+    {
+      "name": "mod-docs-no-em-dash",
+      "glob": "two-man-crew/**/*.md",
+      "bannedPhrases": ["—"]
+    }
+  ]
+}
