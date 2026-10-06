@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Project Zomboid workshop.txt",
-  "description": "Read as key=value. Parameters from the PZwiki workshop.txt page (last updated for 42.5.1): version stays 1; id is the Workshop ID, or absent to create a new item; description may repeat, one line per parameter; tags are semicolon-separated; visibility is documented as 0 to 3. This repo's files use workshopid=0 and visibility=public from the vendored community guide, so both are accepted here and the difference is recorded in the repo's conventions.",
+  "description": "Read as key=value. Parameters from the PZwiki workshop.txt page (last updated for 42.5.1): version stays 1; id is the Workshop ID, or absent to create a new item; description may repeat, one line per parameter; tags are semicolon-separated; visibility is documented as 0 to 3. This repo's files use workshopid=0 and visibility=public from the vendored community guide. Decision (2026-10-06): workshopid is accepted only as the unpublished placeholder 0; a real Workshop ID must go under id, the key the game reads, or the uploader would create a duplicate item. visibility accepts the documented 0 to 3 and public, since the wiki page is marked outdated. Recorded in docs/conventions/versioning.md.",
   "type": "object",
   "required": ["version", "title"],
   "properties": {
     "version": { "const": "1" },
     "id": { "type": "string", "pattern": "^\\d+$" },
-    "workshopid": { "type": "string", "pattern": "^\\d+$" },
+    "workshopid": { "const": "0" },
     "title": { "type": "string", "minLength": 1 },
     "description": {
       "anyOf": [

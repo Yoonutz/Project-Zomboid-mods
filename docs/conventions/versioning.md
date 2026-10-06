@@ -25,6 +25,15 @@ Leave these alone - none of them is the mod's own version:
 | `pzversion` / `versionMin`   | Game build              |
 | `workshop.txt` → `version=1` | Workshop format         |
 
+### workshop.txt keys (decided 2026-10-06)
+
+The vendored guide writes `workshopid=0` and `visibility=public`; the PZwiki documents `id=`
+(absent for a new item) and visibility as `0` to `3`. Nothing is published yet, and the game
+regenerates `workshop.txt` from the in-game uploader, so the files stay as they are. The one
+rule the schema enforces: `workshopid` may only ever be the placeholder `0`. A real Workshop ID
+goes under `id=`, the key the game reads; under `workshopid` the uploader would ignore it and
+create a duplicate item.
+
 ## Multiplayer
 
 Both players need the same `modversion`. A mismatch there is a version problem, not
