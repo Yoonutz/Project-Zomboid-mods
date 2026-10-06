@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project Zomboid mod.info (Build 42)",
+  "description": "Read as key=value; a key given on several lines arrives as an array. Parameters and rules from the PZ API docs ROOT-ModInfo page (42.21.0) and the PZwiki mod.info page: name and id are the necessary parameters; versionMin/versionMax need at least build.major; poster, pack and tiledef may repeat; category only filters for four known values. Repo conventions: id has no spaces (docs/pz-modding-guide/gotchas.md) and modversion is x.y.z (docs/conventions/versioning.md). The top level stays open: pzversion, used by this repo, is not in the official parameter list.",
+  "type": "object",
+  "required": ["name", "id"],
+  "properties": {
+    "name": { "type": "string", "minLength": 1 },
+    "id": { "type": "string", "pattern": "^\\S+$" },
+    "author": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "poster": { "$ref": "#/$defs/repeatablePath" },
+    "icon": { "type": "string", "minLength": 1 },
+    "require": { "$ref": "#/$defs/idList" },
+    "incompatible": { "$ref": "#/$defs/idList" },
+    "loadModAfter": { "$ref": "#/$defs/idList" },
+    "loadModBefore": { "$ref": "#/$defs/idList" },
+    "versionMin": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)*$" },
+    "versionMax": { "type": "string", "pattern": "^\\d+\\.\\d+(\\.\\d+)*$" },
+    "modversion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "pzversion": { "type": "string", "pattern": "^\\d+$" },
+    "pack": { "$ref": "#/$defs/repeatable" },
+    "tiledef": { "$ref": "#/$defs/repeatable" },
+    "url": { "type": "string", "pattern": "^https?://\\S+$" },
+    "category": { "enum": ["map", "vehicle", "features", "modpack"] }
+  },
+  "$defs": {
+    "idList": { "type": "string", "pattern": "^[^,\\s]+(\\s*,\\s*[^,\\s]+)*$" },
+    "repeatable": {
+      "anyOf": [
+        { "type": "string", "minLength": 1 },
+        { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } }
+      ]
+    },
+    "repeatablePath": {
+      "anyOf": [
+        { "type": "string", "pattern": "\\.(png|jpg|jpeg)$" },
+        { "type": "array", "minItems": 2, "items": { "type": "string", "pattern": "\\.(png|jpg|jpeg)$" } }
+      ]
+    }
+  }
+}

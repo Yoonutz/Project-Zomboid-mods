@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Allowed folders (.claude/allowed-paths.json)",
+  "description": "The folders Claude edits may land in, read by the claims-vs-log guard.",
+  "type": "object",
+  "required": ["allowed"],
+  "additionalProperties": false,
+  "properties": {
+    "note": { "type": "string" },
+    "allowed": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "legacy": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+  }
+}
